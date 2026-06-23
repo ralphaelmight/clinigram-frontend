@@ -1613,6 +1613,27 @@ export default function App() {
 
   const handleLogin = (user) => setCurrentUser(user);
   const handleLogout = () => { setToken(null); setCurrentUser(null); setTab("dashboard"); };
+  // Automatically sign out after 5 minutes of no taps/clicks/typing/scrolling.
+  const INACTIVITY_LIMIT_MS = 5 * 60 * 1000;
+  useEffect(() => {
+    if (!currentUser) return;
+    let timer;
+    const reset = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        setToken(null);
+        setCurrentUser(null);
+        setTab("dashboard");
+      }, INACTIVITY_LIMIT_MS);
+    };
+    const events = ["mousemove", "mousedown", "keydown", "touchstart", "scroll"];
+    events.forEach((e) => window.addEventListener(e, reset));
+    reset();
+    return () => {
+      clearTimeout(timer);
+      events.forEach((e) => window.removeEventListener(e, reset));
+    };
+  }, [currentUser]);
 
   if (checkingSession) {
     return <Shell><div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", color: FAINT, fontSize: 13.5 }}>Loading...</div></Shell>;
