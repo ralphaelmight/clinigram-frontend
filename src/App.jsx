@@ -148,7 +148,7 @@ function TopBar({ title, subtitle, onSettings }) {
   );
 }
 
-function Card({ children, style }) {
+function Card({ children, style, ...rest }) {
   return (
     <div style={{ background: WHITE, borderRadius: 14, padding: 16, border: `1px solid ${LINE}`, boxShadow: "0 1px 3px rgba(20,40,60,0.05)", ...style }}>
       {children}
