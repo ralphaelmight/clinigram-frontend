@@ -345,6 +345,7 @@ function BottomNav({ tab, setTab }) {
   const items = [
     { id: "dashboard", icon: LayoutDashboard, label: "Home" },
     { id: "inventory", icon: Package, label: "Stock" },
+    { id: "visits", icon: Stethoscope, label: "Visits" },
     { id: "finance", icon: Wallet, label: "Finance" },
     { id: "patients", icon: Users, label: "Patients" },
     { id: "report", icon: FileBarChart, label: "Report" },
@@ -812,10 +813,11 @@ function SettingsRow({ icon, label, onClick, danger }) {
 
 /* ----------------------------- Dashboard ----------------------------- */
 
-function Dashboard({ inventoryCol, summary, setTab, onSettings, currentUser }) {
+function Dashboard({ inventoryCol, visitsCol, summary, setTab, onSettings, currentUser }) {
   const isAdmin = currentUser.role === "Admin";
   const lowStock = summary?.lowStockItems || [];
   const expiring = summary?.expiringItems || [];
+  const outstandingVisits = (visitsCol?.data || []).filter((v) => Number(v.outstanding_balance) > 0).sort((a, b) => Number(b.outstanding_balance) - Number(a.outstanding_balance));
 
   return (
     <div style={{ padding: "0 16px 100px" }}>
@@ -840,6 +842,18 @@ function Dashboard({ inventoryCol, summary, setTab, onSettings, currentUser }) {
             </div>
           ))}
           {expiring.length > 4 && <div onClick={() => setTab("inventory")} style={{ fontSize: 12.5, color: TEAL, fontWeight: 700, marginTop: 6, cursor: "pointer" }}>View all {expiring.length} \u2192</div>}
+        </Card>
+      )}
+
+      {outstandingVisits.length > 0 && (
+        <Card style={{ marginBottom: 14, border: `1.5px solid ${RED}33` }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}><AlertOctagon size={16} color={RED} /><div style={{ fontWeight: 700, fontSize: 14, color: RED }}>Outstanding balances</div></div>
+          {outstandingVisits.slice(0, 4).map((v) => (
+            <div key={v.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 13.5, borderTop: "1px solid #FBEAEA" }}>
+              <span>{v.patient_name} <span style={{ color: FAINT }}>· HN {v.hospital_number}</span></span><span style={{ fontWeight: 700, color: RED }}>{fmtNaira(v.outstanding_balance)}</span>
+            </div>
+          ))}
+          {outstandingVisits.length > 4 && <div onClick={() => setTab("visits")} style={{ fontSize: 12.5, color: TEAL, fontWeight: 700, marginTop: 6, cursor: "pointer" }}>View all {outstandingVisits.length} →</div>}
         </Card>
       )}
 
@@ -1472,6 +1486,271 @@ function Patients({ patientsCol }) {
   );
 }
 
+/* ----------------------------- Visits ----------------------------- */
+
+function OpenVisitSheet({ patients, visitsCol, onClose, onOpened }) {
+  const [patientQuery, setPatientQuery] = useState("");
+  const [patient, setPatient] = useState(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const matchedPatients = patientQuery
+    ? patients.filter((p) => p.name.toLowerCase().includes(patientQuery.toLowerCase()) || p.hospital_number.toLowerCase().includes(patientQuery.toLowerCase())).slice(0, 5)
+    : [];
+
+  const submit = async () => {
+    if (!patient) { setError("Pick a patient folder to open a visit"); return; }
+    setBusy(true);
+    try {
+      const visit = await visitsCol.create({ patientId: patient.id, patientName: patient.name, hospitalNumber: patient.hospital_number });
+      onOpened(visit);
+    } catch (e) { setError(e.message); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Sheet title="Open a visit" onClose={onClose}>
+      <Field label="Patient">
+        {patient ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#FDEAEA", borderRadius: 10, padding: "9px 12px" }}>
+            <Avatar name={patient.name} role="Front Desk" size={26} />
+            <div style={{ flex: 1, fontSize: 13.5, fontWeight: 600 }}>{patient.name} <span style={{ color: FAINT, fontWeight: 500 }}>· HN {patient.hospital_number}</span></div>
+            <button onClick={() => setPatient(null)} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={15} color={MUTE} /></button>
+          </div>
+        ) : (
+          <>
+            <Input value={patientQuery} onChange={(e) => setPatientQuery(e.target.value)} placeholder="Search patient folder by name or hospital number" />
+            {matchedPatients.length > 0 && (
+              <div style={{ marginTop: 6, border: `1px solid ${LINE}`, borderRadius: 10, overflow: "hidden" }}>
+                {matchedPatients.map((p) => (
+                  <button key={p.id} onClick={() => { setPatient(p); setPatientQuery(""); }} style={{ width: "100%", textAlign: "left", padding: "9px 12px", background: WHITE, border: "none", borderBottom: `1px solid ${LINE}`, cursor: "pointer", fontSize: 13 }}>
+                    <b>{p.name}</b> <span style={{ color: FAINT }}>HN {p.hospital_number}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {matchedPatients.length === 0 && patientQuery && <div style={{ fontSize: 11.5, color: FAINT, marginTop: 5 }}>No folder match — visits require a registered patient folder.</div>}
+          </>
+        )}
+      </Field>
+      {error && <div style={{ color: RED, fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>{error}</div>}
+      <PrimaryButton onClick={submit} color={RED} disabled={busy}><Stethoscope size={16} /> {busy ? "Opening..." : "Open visit"}</PrimaryButton>
+    </Sheet>
+  );
+}
+
+const VISIT_ITEM_TYPES = [
+  { id: "service", label: "Service" },
+  { id: "medication", label: "Medication" },
+  { id: "investigation", label: "Investigation" },
+];
+
+function VisitDetailSheet({ visitId, inventory, services, onClose, onMutate }) {
+  const [visit, setVisit] = useState(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [itemType, setItemType] = useState("service");
+  const [refId, setRefId] = useState("");
+  const [qty, setQty] = useState("1");
+  const [payAmount, setPayAmount] = useState("");
+  const [payMethod, setPayMethod] = useState("cash");
+  const [closeReason, setCloseReason] = useState("");
+  const [showCloseReason, setShowCloseReason] = useState(false);
+
+  const refresh = useCallback(async () => {
+    try { setVisit(await api.get(`/api/visits/${visitId}`)); }
+    catch (e) { setError(e.message); }
+  }, [visitId]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const referenceOptions = itemType === "medication" ? inventory.filter((i) => Number(i.quantity) > 0)
+    : itemType === "investigation" ? services.filter((s) => s.active && s.category === "Investigation")
+    : services.filter((s) => s.active && s.category !== "Investigation");
+
+  const addItem = async () => {
+    if (!refId) { setError("Choose what to add"); return; }
+    setBusy(true); setError("");
+    try {
+      await api.post(`/api/visits/${visitId}/items`, { itemType, referenceId: refId, quantity: Number(qty) || 1 });
+      setRefId(""); setQty("1");
+      await refresh(); onMutate();
+    } catch (e) { setError(e.message); }
+    finally { setBusy(false); }
+  };
+
+  const addPayment = async () => {
+    const amt = Number(payAmount);
+    if (!amt || amt <= 0) { setError("Enter a valid payment amount"); return; }
+    setBusy(true); setError("");
+    try {
+      await api.post(`/api/visits/${visitId}/payments`, { amount: amt, paymentMethod: payMethod });
+      setPayAmount("");
+      await refresh(); onMutate();
+    } catch (e) { setError(e.message); }
+    finally { setBusy(false); }
+  };
+
+  const closeVisit = async () => {
+    setBusy(true); setError("");
+    try {
+      await api.put(`/api/visits/${visitId}/close`, { outstandingReason: closeReason });
+      await refresh(); onMutate();
+      setShowCloseReason(false);
+    } catch (e) { setError(e.message); }
+    finally { setBusy(false); }
+  };
+
+  const tryClose = () => {
+    if (visit && Number(visit.outstanding_balance) > 0) { setShowCloseReason(true); return; }
+    closeVisit();
+  };
+
+  if (!visit) return <Sheet title="Visit" onClose={onClose}><div style={{ color: FAINT, fontSize: 13 }}>Loading...</div></Sheet>;
+
+  const isOpen = visit.status === "open";
+
+  return (
+    <Sheet title={`Visit · ${visit.patient_name}`} onClose={onClose}>
+      <div style={{ fontSize: 12, color: FAINT, marginBottom: 10 }}>HN {visit.hospital_number} · Opened {fmtDateTime(visit.opened_at)} by {visit.opened_by_name}</div>
+
+      {visit.items.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          {visit.items.map((it) => (
+            <div key={it.id} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderTop: `1px solid #F1F4F6` }}>
+              <div style={{ fontSize: 13 }}>{it.description} <span style={{ color: FAINT }}>×{it.quantity}</span></div>
+              <div style={{ fontSize: 13 }}>{fmtNaira(it.total_price)}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {isOpen && (
+        <Field label="Add to visit">
+          <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+            {VISIT_ITEM_TYPES.map((t) => (
+              <button key={t.id} onClick={() => { setItemType(t.id); setRefId(""); }} style={{ flex: 1, border: "none", borderRadius: 8, padding: "7px 0", fontSize: 11.5, fontWeight: 700, cursor: "pointer", background: itemType === t.id ? TEAL : "#F2F3F4", color: itemType === t.id ? WHITE : MUTE }}>{t.label}</button>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <select value={refId} onChange={(e) => setRefId(e.target.value)} style={{ ...inputStyle, flex: 2 }}>
+              <option value="">Select...</option>
+              {referenceOptions.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name}{itemType === "medication" ? ` (${o.quantity} ${o.unit} left)` : ` — ${fmtNaira(o.price)}`}
+                </option>
+              ))}
+            </select>
+            <Input type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)} style={{ flex: 1 }} />
+          </div>
+          <button onClick={addItem} disabled={busy} style={{ marginTop: 8, width: "100%", background: "#EAF8F8", color: TEAL, border: "none", borderRadius: 10, padding: "9px 0", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", justifyContent: "center", gap: 5 }}><Plus size={14} /> Add</button>
+        </Field>
+      )}
+
+      <Card style={{ marginBottom: 12 }}>
+        <Row label="Total charged" value={fmtNaira(visit.total_amount)} />
+        <Row label="Amount paid" value={fmtNaira(visit.amount_paid)} color={TEAL} />
+        <Row label="Outstanding balance" value={fmtNaira(visit.outstanding_balance)} color={Number(visit.outstanding_balance) > 0 ? RED : TEAL} bold />
+      </Card>
+
+      {isOpen && (
+        <Field label="Record payment">
+          <div style={{ display: "flex", gap: 8 }}>
+            <Input type="number" min="0" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} placeholder="Amount" style={{ flex: 2 }} />
+            <select value={payMethod} onChange={(e) => setPayMethod(e.target.value)} style={{ ...inputStyle, flex: 1 }}>
+              <option value="cash">Cash</option>
+              <option value="transfer">Transfer</option>
+              <option value="card">Card</option>
+            </select>
+          </div>
+          <button onClick={addPayment} disabled={busy} style={{ marginTop: 8, width: "100%", background: "#EAF8F8", color: TEAL, border: "none", borderRadius: 10, padding: "9px 0", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", justifyContent: "center", gap: 5 }}><Banknote size={14} /> Record payment</button>
+        </Field>
+      )}
+
+      {visit.payments.length > 0 && (
+        <Field label="Payment history">
+          {visit.payments.map((p) => (
+            <div key={p.id} style={{ padding: "6px 0", borderTop: `1px solid #F1F4F6` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: MUTE }}>
+                <span>{fmtDate(p.date)} · {p.payment_method}</span><span style={{ fontWeight: 700, color: INK }}>{fmtNaira(p.amount)}</span>
+              </div>
+              <div style={{ fontSize: 11, color: FAINT, marginTop: 1 }}>Recorded by {p.recorded_by_name} ({p.recorded_by_role})</div>
+            </div>
+          ))}
+        </Field>
+      )}
+
+      {error && <div style={{ color: RED, fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>{error}</div>}
+
+      {isOpen && !showCloseReason && (
+        <PrimaryButton onClick={tryClose} color={RED} disabled={busy}><Lock size={16} /> Close visit</PrimaryButton>
+      )}
+      {showCloseReason && (
+        <>
+          <Field label="Reason for outstanding balance">
+            <TextArea value={closeReason} onChange={(e) => setCloseReason(e.target.value)} placeholder="e.g. patient to pay balance next visit" />
+          </Field>
+          <PrimaryButton onClick={closeVisit} color={RED} disabled={busy}><Lock size={16} /> Confirm close with outstanding balance</PrimaryButton>
+        </>
+      )}
+      {!isOpen && (
+        <div style={{ fontSize: 12, color: FAINT, textAlign: "center" }}>Closed {fmtDateTime(visit.closed_at)} by {visit.closed_by_name}{visit.outstanding_reason ? ` — ${visit.outstanding_reason}` : ""}</div>
+      )}
+    </Sheet>
+  );
+}
+
+function Visits({ visitsCol, patientsCol, inventoryCol, servicesCol, onMutate }) {
+  const { data: visits } = visitsCol;
+  const [query, setQuery] = useState("");
+  const [showOpen, setShowOpen] = useState(false);
+  const [activeVisitId, setActiveVisitId] = useState(null);
+
+  const filtered = visits.filter((v) => v.patient_name.toLowerCase().includes(query.toLowerCase()) || v.hospital_number.toLowerCase().includes(query.toLowerCase()));
+
+  return (
+    <div style={{ padding: "0 16px 100px" }}>
+      <TopBar title="Visits" subtitle={`${visits.filter((v) => v.status === "open").length} open visit(s)`} />
+      <div style={{ marginTop: 16 }}>
+        <SearchBar value={query} onChange={setQuery} placeholder="Search patient or hospital number..." />
+        {filtered.length === 0 ? (
+          <EmptyState icon={<Stethoscope size={40} />} text="No visits yet" sub="Tap + Open visit to start one" />
+        ) : (
+          filtered.map((v) => (
+            <Card key={v.id} style={{ marginBottom: 9, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }} onClickCapture={() => setActiveVisitId(v.id)}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>{v.patient_name} <span style={{ fontSize: 11, fontWeight: 700, color: v.status === "open" ? TEAL : FAINT, marginLeft: 4 }}>{v.status === "open" ? "OPEN" : "CLOSED"}</span></div>
+                <div style={{ fontSize: 12, color: FAINT }}>HN {v.hospital_number} · {fmtNaira(v.total_amount)}{Number(v.outstanding_balance) > 0 ? ` · ${fmtNaira(v.outstanding_balance)} owed` : ""}</div>
+              </div>
+              <ChevronRight size={17} color="#D9DEE1" />
+            </Card>
+          ))
+        )}
+      </div>
+      <FAB onClick={() => setShowOpen(true)} label="Open visit" />
+
+      {showOpen && (
+        <OpenVisitSheet
+          patients={patientsCol.data}
+          visitsCol={visitsCol}
+          onClose={() => setShowOpen(false)}
+          onOpened={(visit) => { setShowOpen(false); setActiveVisitId(visit.id); }}
+        />
+      )}
+
+      {activeVisitId && (
+        <VisitDetailSheet
+          visitId={activeVisitId}
+          inventory={inventoryCol.data}
+          services={servicesCol.data}
+          onClose={() => { setActiveVisitId(null); visitsCol.refresh(); }}
+          onMutate={() => { visitsCol.refresh(); inventoryCol.refresh(); onMutate(); }}
+        />
+      )}
+    </div>
+  );
+}
+
 /* ----------------------------- Report ----------------------------- */
 
 function Report({ currentUser, ready }) {
@@ -1594,6 +1873,7 @@ export default function App() {
   const dispensationsCol = useApiCollection("/api/dispensations", { enabled: ready });
   const restocksCol = useApiCollection("/api/restocks", { enabled: ready });
   const servicesCol = useApiCollection("/api/services", { enabled: ready });
+  const visitsCol = useApiCollection("/api/visits", { enabled: ready });
   const reconciliationsCol = useApiCollection("/api/reconciliations", { enabled: ready });
   const auditCol = useApiCollection("/api/audit-log", { enabled: ready });
   const staffCol = useApiCollection("/api/staff", { enabled: ready });
@@ -1608,7 +1888,7 @@ export default function App() {
     await api.post("/api/admin/wipe");
     inventoryCol.refresh(); transactionsCol.refresh(); patientsCol.refresh();
     dispensationsCol.refresh(); restocksCol.refresh(); reconciliationsCol.refresh();
-    auditCol.refresh(); refreshSummary();
+    visitsCol.refresh(); auditCol.refresh(); refreshSummary();
   };
 
   const handleLogin = (user) => setCurrentUser(user);
@@ -1658,12 +1938,15 @@ export default function App() {
         }
       `}</style>
       <div style={{ maxWidth: 560, margin: "0 auto", position: "relative" }}>
-        {tab === "dashboard" && <Dashboard inventoryCol={inventoryCol} summary={weekSummary} setTab={setTab} onSettings={() => setShowSettings(true)} currentUser={currentUser} />}
+        {tab === "dashboard" && <Dashboard inventoryCol={inventoryCol} visitsCol={visitsCol} summary={weekSummary} setTab={setTab} onSettings={() => setShowSettings(true)} currentUser={currentUser} />}
         {tab === "inventory" && (
           <InventoryWithRefresh inventoryCol={inventoryCol} patientsCol={patientsCol} dispensationsCol={dispensationsCol} restocksCol={restocksCol} currentUser={currentUser} onMutate={refreshAllAfterMutation} />
         )}
         {tab === "finance" && (
           <FinanceWithRefresh transactionsCol={transactionsCol} patientsCol={patientsCol} servicesCol={servicesCol} reconciliationsCol={reconciliationsCol} summary={weekSummary} currentUser={currentUser} onMutate={refreshAllAfterMutation} />
+        )}
+        {tab === "visits" && (
+          <Visits visitsCol={visitsCol} patientsCol={patientsCol} inventoryCol={inventoryCol} servicesCol={servicesCol} onMutate={refreshAllAfterMutation} />
         )}
         {tab === "patients" && <Patients patientsCol={patientsCol} />}
         {tab === "report" && <Report currentUser={currentUser} ready={ready} />}
