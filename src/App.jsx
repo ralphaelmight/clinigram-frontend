@@ -620,20 +620,90 @@ function ManageUsers({ staffCol, currentUser, onClose }) {
 
 /* ----------------------------- Manage price list (Admin) ----------------------------- */
 
-function ManageServices({ servicesCol, onClose }) {
-  const { data: services, create, update, remove } = servicesCol;
-  const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ name: "", category: "Consultation", price: "" });
+function InvestigationRecipeEditor({ service, inventory, onMutate }) {
+  const [recipes, setRecipes] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+  const [pickId, setPickId] = useState("");
+  const [pickQty, setPickQty] = useState("1");
   const [error, setError] = useState("");
 
-  const openAdd = () => { setForm({ name: "", category: "Consultation", price: "" }); setError(""); setEditing("add"); };
-  const openEdit = (s) => { setForm(s); setError(""); setEditing(s.id); };
+  const refresh = useCallback(async () => {
+    try { setRecipes(await api.get(`/api/services/${service.id}/recipes`)); }
+    catch (e) { setError(e.message); }
+    finally { setLoaded(true); }
+  }, [service.id]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const addRecipe = async () => {
+    if (!pickId) { setError("Choose a consumable"); return; }
+    const qty = Number(pickQty);
+    if (!qty || qty <= 0) { setError("Enter a valid quantity"); return; }
+    try {
+      await api.post(`/api/services/${service.id}/recipes`, { inventoryItemId: pickId, quantityUsed: qty });
+      setPickId(""); setPickQty("1"); setError("");
+      await refresh(); onMutate();
+    } catch (e) { setError(e.message); }
+  };
+
+  const updateQty = async (recipe, qty) => {
+    try { await api.put(`/api/recipes/${recipe.id}`, { quantityUsed: qty }); await refresh(); onMutate(); }
+    catch (e) { setError(e.message); }
+  };
+
+  const removeRecipe = async (recipe) => {
+    try { await api.del(`/api/recipes/${recipe.id}`); await refresh(); onMutate(); }
+    catch (e) { setError(e.message); }
+  };
+
+  const usedItemIds = recipes.map((r) => r.inventory_item_id);
+  const availableItems = inventory.filter((i) => !usedItemIds.includes(i.id));
+
+  return (
+    <Field label="Consumables used (deducted from stock per investigation run)">
+      {loaded && recipes.length === 0 && <div style={{ fontSize: 12, color: FAINT, marginBottom: 8 }}>No consumables linked yet \u2014 this investigation won't deduct any stock.</div>}
+      {recipes.map((r) => (
+        <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: `1px solid #F1F4F6` }}>
+          <div style={{ flex: 1, fontSize: 13 }}>{r.inventory_item_name}</div>
+          <Input type="number" min="0" step="any" value={r.quantity_used} onChange={(e) => updateQty(r, e.target.value)} style={{ width: 70 }} />
+          <span style={{ fontSize: 12, color: FAINT }}>{r.inventory_item_unit}</span>
+          <button onClick={() => removeRecipe(r)} style={{ background: "none", border: "none", cursor: "pointer" }}><Trash2 size={14} color="#D9DEE1" /></button>
+        </div>
+      ))}
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <select value={pickId} onChange={(e) => { setPickId(e.target.value); setError(""); }} style={{ ...inputStyle, flex: 2 }}>
+          <option value="">Add consumable...</option>
+          {availableItems.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+        </select>
+        <Input type="number" min="0" step="any" value={pickQty} onChange={(e) => setPickQty(e.target.value)} style={{ flex: 1 }} />
+      </div>
+      <button onClick={addRecipe} style={{ marginTop: 8, width: "100%", background: "#EAF8F8", color: TEAL, border: "none", borderRadius: 10, padding: "9px 0", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", justifyContent: "center", gap: 5 }}><Plus size={14} /> Add consumable</button>
+      {error && <div style={{ color: RED, fontSize: 12.5, fontWeight: 600, marginTop: 6 }}>{error}</div>}
+    </Field>
+  );
+}
+
+function ManageServices({ servicesCol, inventoryCol, onClose }) {
+  const { data: services, create, update, remove } = servicesCol;
+  const [editing, setEditing] = useState(null);
+  const [form, setForm] = useState({ name: "", category: "Consultation", price: "", is_outsourced: false, external_cost: "" });
+  const [error, setError] = useState("");
+
+  const openAdd = () => { setForm({ name: "", category: "Consultation", price: "", is_outsourced: false, external_cost: "" }); setError(""); setEditing("add"); };
+  const openEdit = (s) => { setForm({ ...s, external_cost: s.external_cost ?? "" }); setError(""); setEditing(s.id); };
+
+  const isInvestigation = form.category === "Investigation";
 
   const save = async () => {
     if (!form.name.trim() || form.price === "") return;
+    const payload = { name: form.name.trim(), category: form.category, price: form.price };
+    if (isInvestigation) {
+      payload.isOutsourced = !!form.is_outsourced;
+      payload.externalCost = form.is_outsourced ? (form.external_cost === "" ? null : form.external_cost) : null;
+    }
     try {
-      if (editing === "add") await create({ name: form.name.trim(), category: form.category, price: form.price });
-      else await update(editing, { name: form.name.trim(), category: form.category, price: form.price });
+      if (editing === "add") await create(payload);
+      else await update(editing, payload);
       setEditing(null);
     } catch (e) { setError(e.message); }
   };
@@ -648,6 +718,24 @@ function ManageServices({ servicesCol, onClose }) {
         <Field label="Service / fee name"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. General Consultation" /></Field>
         <Field label="Category"><Select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} options={SERVICE_CATEGORIES} /></Field>
         <Field label="Price (\u20a6)"><Input type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="0" /></Field>
+
+        {isInvestigation && (
+          <>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: INK, marginBottom: 10, cursor: "pointer" }}>
+              <input type="checkbox" checked={!!form.is_outsourced} onChange={(e) => setForm({ ...form, is_outsourced: e.target.checked })} /> Outsourced to an external lab
+            </label>
+            {form.is_outsourced ? (
+              <Field label="External cost (\u20a6, what the clinic pays the lab \u2014 not billed to the patient)">
+                <Input type="number" value={form.external_cost} onChange={(e) => setForm({ ...form, external_cost: e.target.value })} placeholder="0" />
+              </Field>
+            ) : existing ? (
+              <InvestigationRecipeEditor service={existing} inventory={inventoryCol.data} onMutate={() => {}} />
+            ) : (
+              <div style={{ fontSize: 12, color: FAINT, marginBottom: 10 }}>Save this investigation first, then reopen it here to link the consumables it uses.</div>
+            )}
+          </>
+        )}
+
         <PrimaryButton color={RED} onClick={save}><Save size={16} /> Save</PrimaryButton>
         {existing && (
           <>
@@ -685,7 +773,7 @@ function ManageServices({ servicesCol, onClose }) {
 
 /* ----------------------------- Settings ----------------------------- */
 
-function SettingsSheet({ onClose, currentUser, staffCol, servicesCol, auditCol, onWipe, onLogout }) {
+function SettingsSheet({ onClose, currentUser, staffCol, servicesCol, inventoryCol, auditCol, onWipe, onLogout }) {
   const [view, setView] = useState("main");
   const [oldPin, setOldPin] = useState("");
   const [newPin, setNewPin] = useState("");
@@ -720,7 +808,7 @@ function SettingsSheet({ onClose, currentUser, staffCol, servicesCol, auditCol, 
   };
 
   if (view === "manageUsers") return <ManageUsers staffCol={staffCol} currentUser={currentUser} onClose={onClose} />;
-  if (view === "manageServices") return <ManageServices servicesCol={servicesCol} onClose={onClose} />;
+  if (view === "manageServices") return <ManageServices servicesCol={servicesCol} inventoryCol={inventoryCol} onClose={onClose} />;
 
   if (view === "pin") {
     return (
@@ -1958,6 +2046,7 @@ export default function App() {
             currentUser={currentUser}
             staffCol={staffCol}
             servicesCol={servicesCol}
+            inventoryCol={inventoryCol}
             auditCol={auditCol}
             onWipe={wipeAll}
             onLogout={handleLogout}
