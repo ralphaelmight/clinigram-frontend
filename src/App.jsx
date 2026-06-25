@@ -26,7 +26,7 @@ const REVENUE_CATEGORIES = ["Consultation", "Folder Opening", "Procedure", "Inve
 const EXPENSE_CATEGORIES = ["Salaries", "Utilities", "Supplies Purchase", "Equipment", "Maintenance", "Other"];
 const SERVICE_CATEGORIES = ["Consultation", "Folder Opening", "Procedure", "Investigation"];
 const UNITS = ["tablets", "vials", "bottles", "packs", "boxes", "units", "ampoules", "sachets"];
-const ROLE_OPTIONS = ["Admin", "Pharmacist", "Front Desk", "Accounts", "Lab Scientist", "Nurse", "Other"];
+const ROLE_OPTIONS = ["Admin", "Pharmacist", "Front Desk", "Accounts", "Lab Scientist", "Nurse", "Doctor", "Paramedic", "HR", "Other"];
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
