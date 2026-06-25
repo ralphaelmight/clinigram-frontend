@@ -901,11 +901,12 @@ function SettingsRow({ icon, label, onClick, danger }) {
 
 /* ----------------------------- Dashboard ----------------------------- */
 
-function Dashboard({ inventoryCol, visitsCol, summary, setTab, onSettings, currentUser }) {
+function Dashboard({ inventoryCol, servicesCol, visitsCol, summary, setTab, onSettings, currentUser, onMutate }) {
   const isAdmin = currentUser.role === "Admin";
   const lowStock = summary?.lowStockItems || [];
   const expiring = summary?.expiringItems || [];
   const outstandingVisits = (visitsCol?.data || []).filter((v) => Number(v.outstanding_balance) > 0).sort((a, b) => Number(b.outstanding_balance) - Number(a.outstanding_balance));
+  const [activeVisitId, setActiveVisitId] = useState(null);
 
   return (
     <div style={{ padding: "0 16px 100px" }}>
@@ -937,12 +938,22 @@ function Dashboard({ inventoryCol, visitsCol, summary, setTab, onSettings, curre
         <Card style={{ marginBottom: 14, border: `1.5px solid ${RED}33` }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}><AlertOctagon size={16} color={RED} /><div style={{ fontWeight: 700, fontSize: 14, color: RED }}>Outstanding balances</div></div>
           {outstandingVisits.slice(0, 4).map((v) => (
-            <div key={v.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 13.5, borderTop: "1px solid #FBEAEA" }}>
+            <div key={v.id} onClick={() => setActiveVisitId(v.id)} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 13.5, borderTop: "1px solid #FBEAEA", cursor: "pointer" }}>
               <span>{v.patient_name} <span style={{ color: FAINT }}>· HN {v.hospital_number}</span></span><span style={{ fontWeight: 700, color: RED }}>{fmtNaira(v.outstanding_balance)}</span>
             </div>
           ))}
           {outstandingVisits.length > 4 && <div onClick={() => setTab("visits")} style={{ fontSize: 12.5, color: TEAL, fontWeight: 700, marginTop: 6, cursor: "pointer" }}>View all {outstandingVisits.length} →</div>}
         </Card>
+      )}
+
+      {activeVisitId && (
+        <VisitDetailSheet
+          visitId={activeVisitId}
+          inventory={inventoryCol.data}
+          services={servicesCol.data}
+          onClose={() => { setActiveVisitId(null); visitsCol.refresh(); }}
+          onMutate={() => { visitsCol.refresh(); inventoryCol.refresh(); onMutate(); }}
+        />
       )}
 
       {lowStock.length > 0 && (
@@ -2026,7 +2037,7 @@ export default function App() {
         }
       `}</style>
       <div style={{ maxWidth: 560, margin: "0 auto", position: "relative" }}>
-        {tab === "dashboard" && <Dashboard inventoryCol={inventoryCol} visitsCol={visitsCol} summary={weekSummary} setTab={setTab} onSettings={() => setShowSettings(true)} currentUser={currentUser} />}
+        {tab === "dashboard" && <Dashboard inventoryCol={inventoryCol} servicesCol={servicesCol} visitsCol={visitsCol} summary={weekSummary} setTab={setTab} onSettings={() => setShowSettings(true)} currentUser={currentUser} onMutate={refreshAllAfterMutation} />}
         {tab === "inventory" && (
           <InventoryWithRefresh inventoryCol={inventoryCol} patientsCol={patientsCol} dispensationsCol={dispensationsCol} restocksCol={restocksCol} currentUser={currentUser} onMutate={refreshAllAfterMutation} />
         )}
