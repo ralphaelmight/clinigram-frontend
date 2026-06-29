@@ -880,7 +880,7 @@ function SettingsSheet({ onClose, currentUser, staffCol, servicesCol, inventoryC
       {isAdmin && <SettingsRow icon={<UserCog size={16} color={TEAL} />} label="Manage staff accounts" onClick={() => setView("manageUsers")} />}
       {isAdmin && <SettingsRow icon={<Tag size={16} color={TEAL} />} label="Manage price list" onClick={() => setView("manageServices")} />}
       <SettingsRow icon={<ShieldCheck size={16} color={TEAL} />} label="Privacy & NDPA notice" onClick={() => setView("privacy")} />
-      <SettingsRow icon={<ScrollText size={16} color={RED} />} label="Audit log" onClick={() => setView("audit")} />
+      {isAdmin && <SettingsRow icon={<ScrollText size={16} color={RED} />} label="Audit log" onClick={() => setView("audit")} />}
       <SettingsRow icon={<Download size={16} color={TEAL} />} label={exporting ? "Exporting..." : "Export all data (.json)"} onClick={exportData} />
       {isAdmin && <SettingsRow icon={<Eraser size={16} color={RED} />} label="Erase all data" onClick={() => setView("wipe")} danger />}
       <SettingsRow icon={<LogOut size={16} color={MUTE} />} label="Switch user / sign out" onClick={onLogout} />
@@ -1974,7 +1974,7 @@ export default function App() {
   const servicesCol = useApiCollection("/api/services", { enabled: ready });
   const visitsCol = useApiCollection("/api/visits", { enabled: ready });
   const reconciliationsCol = useApiCollection("/api/reconciliations", { enabled: ready });
-  const auditCol = useApiCollection("/api/audit-log", { enabled: ready });
+  const auditCol = useApiCollection("/api/audit-log", { enabled: ready && currentUser?.role === "Admin" });
   const staffCol = useApiCollection("/api/staff", { enabled: ready });
 
   const { summary: weekSummary, refresh: refreshSummary } = useSummary("week", 0, ready);
