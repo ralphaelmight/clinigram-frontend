@@ -2028,8 +2028,8 @@ export default function App() {
         @keyframes slideUp { from { transform: translateY(24px); opacity: 0.4; } to { transform: translateY(0); opacity: 1; } }
         * { box-sizing: border-box; }
         ::selection { background: ${TEAL}33; }
-        #receipt-print-area { display: none; }
         @media print {
+          #receipt-print-area { display: none; }
           body * { visibility: hidden; }
           #receipt-print-area, #receipt-print-area * { visibility: visible !important; display: block; }
           #receipt-print-area { position: absolute; top: 0; left: 0; width: 100%; }
