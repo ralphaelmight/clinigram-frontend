@@ -1827,12 +1827,10 @@ function VisitDetailSheet({ visitId, inventory, services, patients, onClose, onM
         </>
       )}
       {!isOpen && (
-        <>
-          <div style={{ fontSize: 12, color: FAINT, textAlign: "center" }}>Closed {fmtDateTime(visit.closed_at)} by {visit.closed_by_name}{visit.outstanding_reason ? ` — ${visit.outstanding_reason}` : ""}</div>
-          {invoiceError && <div style={{ color: RED, fontSize: 12.5, fontWeight: 600, marginTop: 8 }}>{invoiceError}</div>}
-          <PrimaryButton onClick={generateInvoice} color={TEAL} disabled={invoiceBusy}><FileText size={16} /> {invoiceBusy ? "Generating..." : "Generate Invoice"}</PrimaryButton>
-        </>
+        <div style={{ fontSize: 12, color: FAINT, textAlign: "center" }}>Closed {fmtDateTime(visit.closed_at)} by {visit.closed_by_name}{visit.outstanding_reason ? ` — ${visit.outstanding_reason}` : ""}</div>
       )}
+      {invoiceError && <div style={{ color: RED, fontSize: 12.5, fontWeight: 600, marginTop: 8 }}>{invoiceError}</div>}
+      <PrimaryButton onClick={generateInvoice} color={TEAL} disabled={invoiceBusy}><FileText size={16} /> {invoiceBusy ? "Generating..." : "Generate Invoice"}</PrimaryButton>
     </Sheet>
   );
 }
