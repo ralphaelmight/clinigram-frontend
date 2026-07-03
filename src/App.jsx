@@ -499,26 +499,73 @@ function ConnectionError({ onRetry }) {
   );
 }
 
+function BranchSelectScreen({ locations, onPick }) {
+  return (
+    <div style={{ minHeight: "100vh", background: RED, padding: "40px 20px" }}>
+      <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}><ClinigramMark size={48} /></div>
+      <div style={{ textAlign: "center", color: WHITE, fontWeight: 800, fontSize: 17, marginBottom: 2 }}>Select branch</div>
+      <div style={{ textAlign: "center", color: "rgba(255,255,255,0.85)", fontSize: 12.5, marginBottom: 20 }}>Which location are you signing in from?</div>
+      <div style={{ maxWidth: 360, margin: "0 auto" }}>
+        {locations.map((loc) => (
+          <button key={loc.id} onClick={() => onPick(loc)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, background: WHITE, border: "none", borderRadius: 14, padding: "14px 16px", marginBottom: 10, cursor: "pointer" }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: "#EAF8F8", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <LayoutDashboard size={18} color={TEAL} />
+            </div>
+            <div style={{ textAlign: "left", flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: 14.5, color: INK }}>{loc.name}</div>
+              {loc.address && <div style={{ fontSize: 11.5, color: MUTE, marginTop: 1 }}>{loc.address}</div>}
+            </div>
+            <ChevronRight size={17} color={FAINT} />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function AuthGate({ onLogin }) {
+  const [locations, setLocations] = useState(null);
+  const [branch, setBranch] = useState(null);
   const [staffList, setStaffList] = useState(null);
   const [picked, setPicked] = useState(null);
   const [connErr, setConnErr] = useState(false);
 
-  const loadStaff = useCallback(async () => {
+  const loadLocations = useCallback(async () => {
     try {
-      const rows = await api.get("/api/staff");
-      setStaffList(rows);
+      const locs = await api.get("/api/locations");
+      setLocations(locs);
       setConnErr(false);
+      // Single branch — skip picker
+      if (locs.length === 1) setBranch(locs[0]);
     } catch (e) {
       setConnErr(true);
     }
   }, []);
 
-  useEffect(() => { loadStaff(); }, [loadStaff]);
+  const loadStaff = useCallback(async (loc) => {
+    try {
+      const rows = await api.get(`/api/staff?location_id=${loc.id}`);
+      setStaffList(rows);
+    } catch (e) {
+      setConnErr(true);
+    }
+  }, []);
 
-  if (connErr) return <ConnectionError onRetry={loadStaff} />;
-  if (staffList === null) {
+  useEffect(() => { loadLocations(); }, [loadLocations]);
+  useEffect(() => { if (branch) loadStaff(branch); }, [branch, loadStaff]);
+
+  const retry = () => { setConnErr(false); setLocations(null); setBranch(null); setStaffList(null); loadLocations(); };
+
+  if (connErr) return <ConnectionError onRetry={retry} />;
+  if (locations === null) {
     return <div style={{ minHeight: "100vh", background: RED, display: "flex", alignItems: "center", justifyContent: "center", color: WHITE, fontSize: 13.5 }}>Connecting...</div>;
+  }
+  // No locations yet — first-run setup
+  if (locations.length === 0) return <CreateAdminScreen onDone={onLogin} />;
+  // Multi-branch: show picker first
+  if (!branch) return <BranchSelectScreen locations={locations} onPick={setBranch} />;
+  if (staffList === null) {
+    return <div style={{ minHeight: "100vh", background: RED, display: "flex", alignItems: "center", justifyContent: "center", color: WHITE, fontSize: 13.5 }}>Loading staff...</div>;
   }
   if (staffList.length === 0) {
     return <CreateAdminScreen onDone={onLogin} />;
@@ -531,17 +578,17 @@ function AuthGate({ onLogin }) {
 
 /* ----------------------------- Manage Users (Admin) ----------------------------- */
 
-function ManageUsers({ staffCol, currentUser, onClose }) {
+function ManageUsers({ staffCol, currentUser, onClose, locations = [] }) {
   const { data: users, create, update, remove } = staffCol;
   const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ name: "", role: "Front Desk", customRole: "", pin: "", pin2: "" });
+  const [form, setForm] = useState({ name: "", role: "Front Desk", customRole: "", pin: "", pin2: "", locationId: "" });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
   const adminCount = users.filter((u) => isAdminTier(u.role) && u.active).length;
 
-  const openAdd = () => { setForm({ name: "", role: "Front Desk", customRole: "", pin: "", pin2: "" }); setError(""); setEditing("add"); };
-  const openEdit = (u) => { setForm({ name: u.name, role: ROLE_OPTIONS.includes(u.role) ? u.role : "Other", customRole: ROLE_OPTIONS.includes(u.role) ? "" : u.role, pin: "", pin2: "" }); setError(""); setEditing(u.id); };
+  const openAdd = () => { setForm({ name: "", role: "Front Desk", customRole: "", pin: "", pin2: "", locationId: locations[0]?.id || "" }); setError(""); setEditing("add"); };
+  const openEdit = (u) => { setForm({ name: u.name, role: ROLE_OPTIONS.includes(u.role) ? u.role : "Other", customRole: ROLE_OPTIONS.includes(u.role) ? "" : u.role, pin: "", pin2: "", locationId: u.location_id || "" }); setError(""); setEditing(u.id); };
   const resolvedRole = () => (form.role === "Other" ? (form.customRole.trim() || "Other") : form.role);
 
   const save = async () => {
@@ -550,7 +597,7 @@ function ManageUsers({ staffCol, currentUser, onClose }) {
     try {
       if (editing === "add") {
         if (form.pin.length < 4 || form.pin !== form.pin2) { setError("PINs must match and be at least 4 digits"); setBusy(false); return; }
-        await create({ name: form.name.trim(), role: resolvedRole(), pin: form.pin });
+        await create({ name: form.name.trim(), role: resolvedRole(), pin: form.pin, locationId: form.locationId || undefined });
       } else {
         await update(editing, { name: form.name.trim(), role: resolvedRole() });
       }
@@ -585,6 +632,13 @@ function ManageUsers({ staffCol, currentUser, onClose }) {
         <Field label="Role"><RoleSelect value={form.role} customValue={form.customRole} onChange={(v) => setForm({ ...form, role: v })} onCustomChange={(v) => setForm({ ...form, customRole: v })} /></Field>
         {editing === "add" ? (
           <>
+            {currentUser.role === "Super Admin" && locations.length > 1 && (
+              <Field label="Branch">
+                <select value={form.locationId} onChange={(e) => setForm({ ...form, locationId: e.target.value })} style={{ ...inputStyle }}>
+                  {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                </select>
+              </Field>
+            )}
             <Field label="Set PIN"><Input type="password" inputMode="numeric" maxLength={8} value={form.pin} onChange={(e) => setForm({ ...form, pin: e.target.value.replace(/\D/g, "") })} /></Field>
             <Field label="Confirm PIN"><Input type="password" inputMode="numeric" maxLength={8} value={form.pin2} onChange={(e) => setForm({ ...form, pin2: e.target.value.replace(/\D/g, "") })} /></Field>
             <PrimaryButton color={RED} onClick={save} disabled={busy || !form.name.trim() || form.pin.length < 4 || form.pin !== form.pin2}><Save size={16} /> Create account</PrimaryButton>
@@ -788,7 +842,7 @@ function ManageServices({ servicesCol, inventoryCol, onClose }) {
 
 /* ----------------------------- Settings ----------------------------- */
 
-function SettingsSheet({ onClose, currentUser, staffCol, servicesCol, inventoryCol, auditCol, onWipe, onLogout }) {
+function SettingsSheet({ onClose, currentUser, staffCol, locations, servicesCol, inventoryCol, auditCol, onWipe, onLogout }) {
   const [view, setView] = useState("main");
   const [oldPin, setOldPin] = useState("");
   const [newPin, setNewPin] = useState("");
@@ -822,7 +876,7 @@ function SettingsSheet({ onClose, currentUser, staffCol, servicesCol, inventoryC
     } catch (e) { setPinError(e.message); }
   };
 
-  if (view === "manageUsers") return <ManageUsers staffCol={staffCol} currentUser={currentUser} onClose={onClose} />;
+  if (view === "manageUsers") return <ManageUsers staffCol={staffCol} currentUser={currentUser} onClose={onClose} locations={locations} />;
   if (view === "manageServices") return <ManageServices servicesCol={servicesCol} inventoryCol={inventoryCol} onClose={onClose} />;
 
   if (view === "pin") {
@@ -2121,6 +2175,7 @@ export default function App() {
   const reconciliationsCol = useApiCollection("/api/reconciliations", { enabled: ready });
   const auditCol = useApiCollection("/api/audit-log", { enabled: ready && isAdminTier(currentUser?.role) });
   const staffCol = useApiCollection("/api/staff", { enabled: ready });
+  const locationsCol = useApiCollection("/api/locations", { enabled: ready });
 
   const { summary: weekSummary, refresh: refreshSummary } = useSummary("week", 0, ready);
 
@@ -2201,6 +2256,7 @@ export default function App() {
             onClose={() => setShowSettings(false)}
             currentUser={currentUser}
             staffCol={staffCol}
+            locations={locationsCol.data}
             servicesCol={servicesCol}
             inventoryCol={inventoryCol}
             auditCol={auditCol}
