@@ -27,6 +27,7 @@ const EXPENSE_CATEGORIES = ["Salaries", "Utilities", "Supplies Purchase", "Equip
 const SERVICE_CATEGORIES = ["Consultation", "Folder Opening", "Procedure", "Investigation"];
 const UNITS = ["tablets", "vials", "bottles", "packs", "boxes", "units", "ampoules", "sachets"];
 const ROLE_OPTIONS = ["Admin", "Pharmacist", "Front Desk", "Accounts", "Lab Scientist", "Nurse", "Doctor", "Paramedic", "HR", "Other"];
+const isAdminTier = (role) => role === "Admin" || role === "Super Admin";
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
@@ -326,12 +327,12 @@ function LockedRow({ label }) {
 }
 
 function RoleBadge({ role }) {
-  const admin = role === "Admin";
+  const admin = isAdminTier(role);
   return <span style={{ fontSize: 10.5, fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: admin ? "#FDEAEA" : "#EAF8F8", color: admin ? RED : TEAL }}>{role}</span>;
 }
 
 function Avatar({ name, role, size = 38 }) {
-  const admin = role === "Admin";
+  const admin = isAdminTier(role);
   return (
     <div style={{ width: size, height: size, borderRadius: size / 2, flexShrink: 0, background: admin ? "#FDEAEA" : "#EAF8F8", color: admin ? RED : TEAL, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: size * 0.4 }}>
       {(name || "?").trim().charAt(0).toUpperCase()}
@@ -537,7 +538,7 @@ function ManageUsers({ staffCol, currentUser, onClose }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const adminCount = users.filter((u) => u.role === "Admin" && u.active).length;
+  const adminCount = users.filter((u) => isAdminTier(u.role) && u.active).length;
 
   const openAdd = () => { setForm({ name: "", role: "Front Desk", customRole: "", pin: "", pin2: "" }); setError(""); setEditing("add"); };
   const openEdit = (u) => { setForm({ name: u.name, role: ROLE_OPTIONS.includes(u.role) ? u.role : "Other", customRole: ROLE_OPTIONS.includes(u.role) ? "" : u.role, pin: "", pin2: "" }); setError(""); setEditing(u.id); };
@@ -591,9 +592,14 @@ function ManageUsers({ staffCol, currentUser, onClose }) {
               <Input type="password" inputMode="numeric" maxLength={8} placeholder="Confirm" value={form.pin2} onChange={(e) => setForm({ ...form, pin2: e.target.value.replace(/\D/g, "") })} />
             </div>
             <GhostButton color={TEAL} onClick={() => resetPin(existing)}><RotateCcw size={14} /> Reset PIN</GhostButton>
-            <GhostButton color={RED} onClick={() => toggleActive(existing)}><Power size={14} /> {existing.active ? "Deactivate account" : "Reactivate account"}</GhostButton>
-            {existing.role === "Admin" && existing.active && adminCount <= 1 && (
-              <div style={{ fontSize: 11.5, color: FAINT, textAlign: "center", marginTop: 4 }}>This is the only active Admin, so it can't be deactivated.</div>
+            {!(existing.role === "Super Admin" && existing.active) && (
+              <GhostButton color={RED} onClick={() => toggleActive(existing)}><Power size={14} /> {existing.active ? "Deactivate account" : "Reactivate account"}</GhostButton>
+            )}
+            {existing.role === "Super Admin" && existing.active && (
+              <div style={{ fontSize: 11.5, color: FAINT, textAlign: "center", marginTop: 4 }}>Super Admin accounts can't be deactivated.</div>
+            )}
+            {isAdminTier(existing.role) && existing.role !== "Super Admin" && existing.active && adminCount <= 1 && (
+              <div style={{ fontSize: 11.5, color: FAINT, textAlign: "center", marginTop: 4 }}>This is the only active Admin-tier account, so it can't be deactivated.</div>
             )}
           </>
         )}
@@ -782,7 +788,7 @@ function SettingsSheet({ onClose, currentUser, staffCol, servicesCol, inventoryC
   const [wipeConfirm, setWipeConfirm] = useState("");
   const [exporting, setExporting] = useState(false);
 
-  const isAdmin = currentUser.role === "Admin";
+  const isAdmin = isAdminTier(currentUser.role);
 
   const exportData = async () => {
     setExporting(true);
@@ -902,7 +908,7 @@ function SettingsRow({ icon, label, onClick, danger }) {
 /* ----------------------------- Dashboard ----------------------------- */
 
 function Dashboard({ inventoryCol, servicesCol, visitsCol, patientsCol, summary, setTab, onSettings, currentUser, onMutate }) {
-  const isAdmin = currentUser.role === "Admin";
+  const isAdmin = isAdminTier(currentUser.role);
   const lowStock = summary?.lowStockItems || [];
   const expiring = summary?.expiringItems || [];
   const outstandingVisits = (visitsCol?.data || []).filter((v) => Number(v.outstanding_balance) > 0).sort((a, b) => Number(b.outstanding_balance) - Number(a.outstanding_balance));
@@ -1396,7 +1402,7 @@ function CashReconciliationSheet({ reconciliationsCol, onClose }) {
 /* ----------------------------- Finance ----------------------------- */
 
 function Finance({ transactionsCol, patientsCol, servicesCol, reconciliationsCol, summary, currentUser }) {
-  const isAdmin = currentUser.role === "Admin";
+  const isAdmin = isAdminTier(currentUser.role);
   const { data: transactions, create, remove } = transactionsCol;
   const [filter, setFilter] = useState("all");
   const [sheet, setSheet] = useState(false);
@@ -1934,7 +1940,7 @@ function Visits({ visitsCol, patientsCol, inventoryCol, servicesCol, onMutate })
 /* ----------------------------- Report ----------------------------- */
 
 function Report({ currentUser, ready }) {
-  const isAdmin = currentUser.role === "Admin";
+  const isAdmin = isAdminTier(currentUser.role);
   const [periodType, setPeriodType] = useState("week");
   const [offset, setOffset] = useState(0);
   const { summary } = useSummary(periodType, offset, ready);
@@ -2055,7 +2061,7 @@ export default function App() {
   const servicesCol = useApiCollection("/api/services", { enabled: ready });
   const visitsCol = useApiCollection("/api/visits", { enabled: ready });
   const reconciliationsCol = useApiCollection("/api/reconciliations", { enabled: ready });
-  const auditCol = useApiCollection("/api/audit-log", { enabled: ready && currentUser?.role === "Admin" });
+  const auditCol = useApiCollection("/api/audit-log", { enabled: ready && isAdminTier(currentUser?.role) });
   const staffCol = useApiCollection("/api/staff", { enabled: ready });
 
   const { summary: weekSummary, refresh: refreshSummary } = useSummary("week", 0, ready);
