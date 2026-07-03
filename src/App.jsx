@@ -2174,7 +2174,10 @@ export default function App() {
   const visitsCol = useApiCollection("/api/visits", { enabled: ready });
   const reconciliationsCol = useApiCollection("/api/reconciliations", { enabled: ready });
   const auditCol = useApiCollection("/api/audit-log", { enabled: ready && isAdminTier(currentUser?.role) });
-  const staffCol = useApiCollection("/api/staff", { enabled: ready });
+  const staffEndpoint = !currentUser ? "/api/staff"
+    : currentUser.role === "Super Admin" ? "/api/staff"
+    : `/api/staff?location_id=${currentUser.location_id}`;
+  const staffCol = useApiCollection(staffEndpoint, { enabled: ready });
   const locationsCol = useApiCollection("/api/locations", { enabled: ready });
 
   const { summary: weekSummary, refresh: refreshSummary } = useSummary("week", 0, ready);
