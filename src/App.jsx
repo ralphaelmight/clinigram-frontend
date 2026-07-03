@@ -102,11 +102,7 @@ function useSummary(period, offset, ready) {
 
 function ClinigramMark({ size = 30 }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 40 40" style={{ flexShrink: 0 }}>
-      <circle cx="20" cy="20" r="19" fill={WHITE} />
-      <path d="M20 3 A17 17 0 0 0 5.5 29.5 L13 25.2 A9.5 9.5 0 0 1 20 10.5 Z" fill={RED} />
-      <path d="M20 36.5 A16.5 16.5 0 0 0 34.2 11 L26.8 15.3 A9 9 0 0 1 20 29.5 Z" fill={TEAL} />
-    </svg>
+    <img src="/logo.jpg" alt="Clinigram" width={size} height={size} style={{ borderRadius: "50%", flexShrink: 0, objectFit: "cover" }} />
   );
 }
 
