@@ -1665,7 +1665,10 @@ function VisitDetailSheet({ visitId, inventory, services, patients, onClose, onM
   const [payAmount, setPayAmount] = useState("");
   const [payMethod, setPayMethod] = useState("cash");
   const [closeReason, setCloseReason] = useState("");
-  const [showCloseReason, setShowCloseReason] = useState(false);
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+  const [writeOffReason, setWriteOffReason] = useState("");
+  const [showWriteOff, setShowWriteOff] = useState(false);
+  const [writeOffBusy, setWriteOffBusy] = useState(false);
 
   const refresh = useCallback(async () => {
     try { setVisit(await api.get(`/api/visits/${visitId}`)); }
@@ -1734,9 +1737,16 @@ function VisitDetailSheet({ visitId, inventory, services, patients, onClose, onM
     }
   };
 
-  const tryClose = () => {
-    if (visit && Number(visit.outstanding_balance) > 0) { setShowCloseReason(true); return; }
-    closeVisit();
+  const tryClose = () => { setShowCloseConfirm(true); };
+
+  const writeOff = async () => {
+    setWriteOffBusy(true); setError("");
+    try {
+      await api.put(`/api/visits/${visitId}/write-off`, { reason: writeOffReason });
+      setShowWriteOff(false); setWriteOffReason("");
+      await refresh(); onMutate();
+    } catch (e) { setError(e.message); }
+    finally { setWriteOffBusy(false); }
   };
 
   if (!visit) return <Sheet title="Visit" onClose={onClose}><div style={{ color: FAINT, fontSize: 13 }}>Loading...</div></Sheet>;
@@ -1783,6 +1793,7 @@ function VisitDetailSheet({ visitId, inventory, services, patients, onClose, onM
       <Card style={{ marginBottom: 12 }}>
         <Row label="Total charged" value={fmtNaira(visit.total_amount)} />
         <Row label="Amount paid" value={fmtNaira(visit.amount_paid)} color={TEAL} />
+        {Number(visit.discount_amount) > 0 && <Row label="Discount / write-off" value={`−${fmtNaira(visit.discount_amount)}`} color={MUTE} />}
         <Row label="Outstanding balance" value={fmtNaira(visit.outstanding_balance)} color={Number(visit.outstanding_balance) > 0 ? RED : TEAL} bold />
       </Card>
 
@@ -1815,19 +1826,52 @@ function VisitDetailSheet({ visitId, inventory, services, patients, onClose, onM
 
       {error && <div style={{ color: RED, fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>{error}</div>}
 
-      {isOpen && !showCloseReason && (
+      {isOpen && !showCloseConfirm && (
         <PrimaryButton onClick={tryClose} color={RED} disabled={busy}><Lock size={16} /> Close visit</PrimaryButton>
       )}
-      {showCloseReason && (
-        <>
-          <Field label="Reason for outstanding balance">
-            <TextArea value={closeReason} onChange={(e) => setCloseReason(e.target.value)} placeholder="e.g. patient to pay balance next visit" />
-          </Field>
-          <PrimaryButton onClick={closeVisit} color={RED} disabled={busy}><Lock size={16} /> Confirm close with outstanding balance</PrimaryButton>
-        </>
+      {isOpen && showCloseConfirm && (
+        <div style={{ background: "#FFF8E7", border: `1px solid #F5C842`, borderRadius: 12, padding: "14px 14px 10px" }}>
+          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>Close this visit?</div>
+          {Number(visit.outstanding_balance) > 0 ? (
+            <div style={{ fontSize: 12.5, color: RED, marginBottom: 10 }}>
+              There is an outstanding balance of <strong>{fmtNaira(visit.outstanding_balance)}</strong>. If the patient hasn't paid in full, consider leaving the visit open and closing it when payment is complete.
+            </div>
+          ) : (
+            <div style={{ fontSize: 12.5, color: MUTE, marginBottom: 10 }}>
+              Has the patient paid in full? Visits should be left open if payment is still expected — you won't be able to add charges or payments after closing.
+            </div>
+          )}
+          {Number(visit.outstanding_balance) > 0 && (
+            <Field label="Reason for outstanding balance">
+              <TextArea value={closeReason} onChange={(e) => setCloseReason(e.target.value)} placeholder="e.g. patient to pay balance on next visit" />
+            </Field>
+          )}
+          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+            <div style={{ flex: 1 }}><GhostButton onClick={() => { setShowCloseConfirm(false); setCloseReason(""); }}>Cancel</GhostButton></div>
+            <div style={{ flex: 1 }}><PrimaryButton onClick={closeVisit} color={RED} disabled={busy}>
+              <Lock size={14} /> {Number(visit.outstanding_balance) > 0 ? "Close anyway" : "Yes, close"}
+            </PrimaryButton></div>
+          </div>
+        </div>
       )}
       {!isOpen && (
         <div style={{ fontSize: 12, color: FAINT, textAlign: "center" }}>Closed {fmtDateTime(visit.closed_at)} by {visit.closed_by_name}{visit.outstanding_reason ? ` — ${visit.outstanding_reason}` : ""}</div>
+      )}
+      {!isOpen && Number(visit.outstanding_balance) > 0 && !showWriteOff && (
+        <GhostButton color={MUTE} onClick={() => setShowWriteOff(true)}><Eraser size={14} /> Write off ₦{Number(visit.outstanding_balance).toLocaleString()} balance</GhostButton>
+      )}
+      {!isOpen && showWriteOff && (
+        <div style={{ background: "#F9F9F9", border: `1px solid ${LINE}`, borderRadius: 12, padding: "12px 14px 10px" }}>
+          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>Write off outstanding balance</div>
+          <div style={{ fontSize: 12.5, color: MUTE, marginBottom: 10 }}>This will clear the <strong>{fmtNaira(visit.outstanding_balance)}</strong> outstanding balance. It will no longer appear on the dashboard.</div>
+          <Field label="Reason (optional)">
+            <TextArea value={writeOffReason} onChange={(e) => setWriteOffReason(e.target.value)} placeholder="e.g. patient unable to pay, waived by management" />
+          </Field>
+          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+            <div style={{ flex: 1 }}><GhostButton onClick={() => { setShowWriteOff(false); setWriteOffReason(""); }}>Cancel</GhostButton></div>
+            <div style={{ flex: 1 }}><PrimaryButton onClick={writeOff} color={RED} disabled={writeOffBusy}><Eraser size={14} /> {writeOffBusy ? "Writing off..." : "Confirm write-off"}</PrimaryButton></div>
+          </div>
+        </div>
       )}
       {invoiceError && <div style={{ color: RED, fontSize: 12.5, fontWeight: 600, marginTop: 8 }}>{invoiceError}</div>}
       <PrimaryButton onClick={generateInvoice} color={TEAL} disabled={invoiceBusy}><FileText size={16} /> {invoiceBusy ? "Generating..." : "Generate Invoice"}</PrimaryButton>
