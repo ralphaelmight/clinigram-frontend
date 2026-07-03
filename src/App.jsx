@@ -9,7 +9,7 @@ import {
   FileText, Activity, CalendarClock, PackagePlus, Printer,
   Banknote, Link2, AlertOctagon, Tag, WifiOff
 } from "lucide-react";
-import { api, getToken, setToken } from "./api";
+import { api, getToken, setToken, postForBlob } from "./api";
 
 /* ----------------------------- brand tokens ----------------------------- */
 
@@ -901,7 +901,7 @@ function SettingsRow({ icon, label, onClick, danger }) {
 
 /* ----------------------------- Dashboard ----------------------------- */
 
-function Dashboard({ inventoryCol, servicesCol, visitsCol, summary, setTab, onSettings, currentUser, onMutate }) {
+function Dashboard({ inventoryCol, servicesCol, visitsCol, patientsCol, summary, setTab, onSettings, currentUser, onMutate }) {
   const isAdmin = currentUser.role === "Admin";
   const lowStock = summary?.lowStockItems || [];
   const expiring = summary?.expiringItems || [];
@@ -951,6 +951,7 @@ function Dashboard({ inventoryCol, servicesCol, visitsCol, summary, setTab, onSe
           visitId={activeVisitId}
           inventory={inventoryCol.data}
           services={servicesCol.data}
+          patients={patientsCol.data}
           onClose={() => { setActiveVisitId(null); visitsCol.refresh(); }}
           onMutate={() => { visitsCol.refresh(); inventoryCol.refresh(); onMutate(); }}
         />
@@ -1531,12 +1532,12 @@ function Patients({ patientsCol }) {
   const [query, setQuery] = useState("");
   const [sheet, setSheet] = useState(null);
   const [error, setError] = useState("");
-  const [form, setForm] = useState({ name: "", hospitalNumber: "", phone: "", note: "" });
+  const [form, setForm] = useState({ name: "", hospitalNumber: "", phone: "", note: "", gender: "", age: "" });
 
   const filtered = patients.filter((p) => p.name.toLowerCase().includes(query.toLowerCase()) || p.hospital_number.toLowerCase().includes(query.toLowerCase()));
 
-  const openAdd = () => { setForm({ name: "", hospitalNumber: "", phone: "", note: "" }); setError(""); setSheet("add"); };
-  const openEdit = (p) => { setForm({ name: p.name, hospitalNumber: p.hospital_number, phone: p.phone, note: p.note }); setError(""); setSheet(p.id); };
+  const openAdd = () => { setForm({ name: "", hospitalNumber: "", phone: "", note: "", gender: "", age: "" }); setError(""); setSheet("add"); };
+  const openEdit = (p) => { setForm({ name: p.name, hospitalNumber: p.hospital_number, phone: p.phone, note: p.note, gender: p.gender || "", age: p.age || "" }); setError(""); setSheet(p.id); };
 
   const save = async () => {
     if (!form.name || !form.hospitalNumber) return;
@@ -1574,6 +1575,14 @@ function Patients({ patientsCol }) {
           <ErrorBanner message={error} />
           <Field label="Patient name"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Full name" /></Field>
           <Field label="Hospital number"><Input value={form.hospitalNumber} onChange={(e) => setForm({ ...form, hospitalNumber: e.target.value })} placeholder="e.g. CG-2026-0142" /></Field>
+          <Field label="Gender (optional)">
+            <select value={form.gender} onChange={(e) => setForm({ ...form, gender: e.target.value })} style={inputStyle}>
+              <option value="">Select...</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+            </select>
+          </Field>
+          <Field label="Age (optional)"><Input value={form.age} onChange={(e) => setForm({ ...form, age: e.target.value })} placeholder="e.g. 34 or ADULT" /></Field>
           <Field label="Phone (optional)"><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="08012345678" /></Field>
           <Field label="Note (optional)"><TextArea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Any reference note" /></Field>
           <div style={{ fontSize: 11.5, color: FAINT, marginBottom: 10, lineHeight: 1.5 }}>Recorded under Clinigram's lawful basis for healthcare service delivery, per NDPA 2023.</div>
@@ -1644,8 +1653,10 @@ const VISIT_ITEM_TYPES = [
   { id: "investigation", label: "Investigation" },
 ];
 
-function VisitDetailSheet({ visitId, inventory, services, onClose, onMutate }) {
+function VisitDetailSheet({ visitId, inventory, services, patients, onClose, onMutate }) {
   const [visit, setVisit] = useState(null);
+  const [invoiceBusy, setInvoiceBusy] = useState(false);
+  const [invoiceError, setInvoiceError] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [itemType, setItemType] = useState("service");
@@ -1698,6 +1709,29 @@ function VisitDetailSheet({ visitId, inventory, services, onClose, onMutate }) {
       setShowCloseReason(false);
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
+  };
+
+  const generateInvoice = async () => {
+    setInvoiceError("");
+    // Open the tab synchronously, on the click itself, so the browser doesn't
+    // treat the later async navigation as a popup and block it.
+    const tab = window.open("", "_blank");
+    setInvoiceBusy(true);
+    try {
+      const patient = patients.find((p) => p.id === visit.patient_id);
+      const blob = await postForBlob("/api/documents/invoice", {
+        visitId,
+        patient: { name: visit.patient_name, gender: patient?.gender || "", age: patient?.age || "", mrn: visit.hospital_number },
+      });
+      const url = URL.createObjectURL(blob);
+      if (tab) tab.location.href = url;
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (e) {
+      if (tab) tab.close();
+      setInvoiceError(e.message);
+    } finally {
+      setInvoiceBusy(false);
+    }
   };
 
   const tryClose = () => {
@@ -1793,7 +1827,11 @@ function VisitDetailSheet({ visitId, inventory, services, onClose, onMutate }) {
         </>
       )}
       {!isOpen && (
-        <div style={{ fontSize: 12, color: FAINT, textAlign: "center" }}>Closed {fmtDateTime(visit.closed_at)} by {visit.closed_by_name}{visit.outstanding_reason ? ` — ${visit.outstanding_reason}` : ""}</div>
+        <>
+          <div style={{ fontSize: 12, color: FAINT, textAlign: "center" }}>Closed {fmtDateTime(visit.closed_at)} by {visit.closed_by_name}{visit.outstanding_reason ? ` — ${visit.outstanding_reason}` : ""}</div>
+          {invoiceError && <div style={{ color: RED, fontSize: 12.5, fontWeight: 600, marginTop: 8 }}>{invoiceError}</div>}
+          <PrimaryButton onClick={generateInvoice} color={TEAL} disabled={invoiceBusy}><FileText size={16} /> {invoiceBusy ? "Generating..." : "Generate Invoice"}</PrimaryButton>
+        </>
       )}
     </Sheet>
   );
@@ -1842,6 +1880,7 @@ function Visits({ visitsCol, patientsCol, inventoryCol, servicesCol, onMutate })
           visitId={activeVisitId}
           inventory={inventoryCol.data}
           services={servicesCol.data}
+          patients={patientsCol.data}
           onClose={() => { setActiveVisitId(null); visitsCol.refresh(); }}
           onMutate={() => { visitsCol.refresh(); inventoryCol.refresh(); onMutate(); }}
         />
@@ -2037,7 +2076,7 @@ export default function App() {
         }
       `}</style>
       <div style={{ maxWidth: 560, margin: "0 auto", position: "relative" }}>
-        {tab === "dashboard" && <Dashboard inventoryCol={inventoryCol} servicesCol={servicesCol} visitsCol={visitsCol} summary={weekSummary} setTab={setTab} onSettings={() => setShowSettings(true)} currentUser={currentUser} onMutate={refreshAllAfterMutation} />}
+        {tab === "dashboard" && <Dashboard inventoryCol={inventoryCol} servicesCol={servicesCol} visitsCol={visitsCol} patientsCol={patientsCol} summary={weekSummary} setTab={setTab} onSettings={() => setShowSettings(true)} currentUser={currentUser} onMutate={refreshAllAfterMutation} />}
         {tab === "inventory" && (
           <InventoryWithRefresh inventoryCol={inventoryCol} patientsCol={patientsCol} dispensationsCol={dispensationsCol} restocksCol={restocksCol} currentUser={currentUser} onMutate={refreshAllAfterMutation} />
         )}

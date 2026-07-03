@@ -38,3 +38,24 @@ export const api = {
   put: (path, body) => request("PUT", path, body),
   del: (path) => request("DELETE", path),
 };
+
+export async function postForBlob(path, body) {
+  const headers = { "Content-Type": "application/json" };
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: "POST",
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+
+  if (!res.ok) {
+    let message = `Request failed (${res.status})`;
+    try { const data = await res.json(); message = data.error || message; } catch (e) { /* empty body */ }
+    const err = new Error(message);
+    err.status = res.status;
+    throw err;
+  }
+  return res.blob();
+}
