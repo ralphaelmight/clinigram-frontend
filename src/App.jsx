@@ -874,7 +874,7 @@ function SettingsSheet({ onClose, currentUser, staffCol, servicesCol, inventoryC
     return (
       <Sheet title="Erase all data" onClose={onClose} onBack={() => setView("main")}>
         <div style={{ fontSize: 13.5, color: INK, marginBottom: 12, lineHeight: 1.5 }}>
-          This permanently deletes all inventory, finance, patient, dispensation, restock and reconciliation records on the server. Staff accounts and the price list are kept. This cannot be undone. Type <b>DELETE</b> to confirm.
+          This permanently deletes all inventory, finance, patient, dispensation, restock, reconciliation and visit (including payments) records on the server. Staff accounts and the price list are kept. This cannot be undone. Type <b>DELETE</b> to confirm.
         </div>
         <Input value={wipeConfirm} onChange={(e) => setWipeConfirm(e.target.value)} placeholder="DELETE" />
         <PrimaryButton color={RED} disabled={wipeConfirm !== "DELETE"} onClick={() => { onWipe(); onClose(); }}><Eraser size={15} /> Erase everything</PrimaryButton>
