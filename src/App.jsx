@@ -532,7 +532,7 @@ function AuthGate({ onLogin }) {
 /* ----------------------------- Manage Users (Admin) ----------------------------- */
 
 function ManageUsers({ staffCol, currentUser, onClose }) {
-  const { data: users, create, update } = staffCol;
+  const { data: users, create, update, remove } = staffCol;
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ name: "", role: "Front Desk", customRole: "", pin: "", pin2: "" });
   const [error, setError] = useState("");
@@ -570,6 +570,12 @@ function ManageUsers({ staffCol, currentUser, onClose }) {
     catch (e) { setError(e.message); }
   };
 
+  const deleteAccount = async (u) => {
+    if (!window.confirm(`Permanently delete "${u.name}"'s account? Their activity history is kept, but they'll no longer be able to sign in.`)) return;
+    try { await remove(u.id); setEditing(null); }
+    catch (e) { setError(e.message); }
+  };
+
   if (editing) {
     const existing = editing !== "add" ? users.find((u) => u.id === editing) : null;
     return (
@@ -600,6 +606,9 @@ function ManageUsers({ staffCol, currentUser, onClose }) {
             )}
             {isAdminTier(existing.role) && existing.role !== "Super Admin" && existing.active && adminCount <= 1 && (
               <div style={{ fontSize: 11.5, color: FAINT, textAlign: "center", marginTop: 4 }}>This is the only active Admin-tier account, so it can't be deactivated.</div>
+            )}
+            {currentUser.role === "Super Admin" && existing.role !== "Super Admin" && (
+              <GhostButton color={RED} onClick={() => deleteAccount(existing)}><Trash2 size={14} /> Delete account</GhostButton>
             )}
           </>
         )}
