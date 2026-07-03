@@ -842,7 +842,7 @@ function ManageServices({ servicesCol, inventoryCol, onClose }) {
 
 /* ----------------------------- Settings ----------------------------- */
 
-function SettingsSheet({ onClose, currentUser, staffCol, locations, servicesCol, inventoryCol, auditCol, onWipe, onLogout }) {
+function SettingsSheet({ onClose, currentUser, staffCol, locations, onLocationsRefresh, servicesCol, inventoryCol, auditCol, onWipe, onLogout }) {
   const [view, setView] = useState("main");
   const [oldPin, setOldPin] = useState("");
   const [newPin, setNewPin] = useState("");
@@ -850,6 +850,9 @@ function SettingsSheet({ onClose, currentUser, staffCol, locations, servicesCol,
   const [pinError, setPinError] = useState("");
   const [wipeConfirm, setWipeConfirm] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [branchForm, setBranchForm] = useState({ name: "", address: "" });
+  const [branchError, setBranchError] = useState("");
+  const [branchBusy, setBranchBusy] = useState(false);
 
   const isAdmin = isAdminTier(currentUser.role);
 
@@ -878,6 +881,41 @@ function SettingsSheet({ onClose, currentUser, staffCol, locations, servicesCol,
 
   if (view === "manageUsers") return <ManageUsers staffCol={staffCol} currentUser={currentUser} onClose={onClose} locations={locations} />;
   if (view === "manageServices") return <ManageServices servicesCol={servicesCol} inventoryCol={inventoryCol} onClose={onClose} />;
+
+  if (view === "manageBranches") {
+    const addBranch = async () => {
+      if (!branchForm.name.trim()) { setBranchError("Branch name is required."); return; }
+      setBranchBusy(true); setBranchError("");
+      try {
+        await api.post("/api/locations", { name: branchForm.name.trim(), address: branchForm.address.trim() || undefined });
+        setBranchForm({ name: "", address: "" });
+        if (onLocationsRefresh) onLocationsRefresh();
+      } catch (e) { setBranchError(e.message); }
+      finally { setBranchBusy(false); }
+    };
+    return (
+      <Sheet title="Manage branches" onClose={onClose} onBack={() => setView("main")}>
+        <div style={{ marginBottom: 16 }}>
+          {locations.map((loc) => (
+            <div key={loc.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", border: `1px solid ${LINE}`, borderRadius: 12, marginBottom: 9 }}>
+              <div style={{ width: 32, height: 32, borderRadius: 9, background: "#EAF8F8", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <LayoutDashboard size={16} color={TEAL} />
+              </div>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>{loc.name}</div>
+                {loc.address && <div style={{ fontSize: 12, color: MUTE, marginTop: 2 }}>{loc.address}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: INK, marginBottom: 10 }}>Add new branch</div>
+        <ErrorBanner message={branchError} />
+        <Field label="Branch name"><Input value={branchForm.name} onChange={(e) => setBranchForm({ ...branchForm, name: e.target.value })} placeholder="e.g. Abuja" /></Field>
+        <Field label="Address (optional)"><Input value={branchForm.address} onChange={(e) => setBranchForm({ ...branchForm, address: e.target.value })} placeholder="Street address" /></Field>
+        <PrimaryButton color={TEAL} onClick={addBranch} disabled={branchBusy || !branchForm.name.trim()}><Plus size={15} /> {branchBusy ? "Creating..." : "Create branch"}</PrimaryButton>
+      </Sheet>
+    );
+  }
 
   if (view === "pin") {
     return (
@@ -948,6 +986,7 @@ function SettingsSheet({ onClose, currentUser, staffCol, locations, servicesCol,
       <SettingsRow icon={<KeyRound size={16} color={RED} />} label="Change my PIN" onClick={() => setView("pin")} />
       {isAdmin && <SettingsRow icon={<UserCog size={16} color={TEAL} />} label="Manage staff accounts" onClick={() => setView("manageUsers")} />}
       {isAdmin && <SettingsRow icon={<Tag size={16} color={TEAL} />} label="Manage price list" onClick={() => setView("manageServices")} />}
+      {currentUser.role === "Super Admin" && <SettingsRow icon={<LayoutDashboard size={16} color={TEAL} />} label="Manage branches" onClick={() => setView("manageBranches")} />}
       <SettingsRow icon={<ShieldCheck size={16} color={TEAL} />} label="Privacy & NDPA notice" onClick={() => setView("privacy")} />
       {isAdmin && <SettingsRow icon={<ScrollText size={16} color={RED} />} label="Audit log" onClick={() => setView("audit")} />}
       <SettingsRow icon={<Download size={16} color={TEAL} />} label={exporting ? "Exporting..." : "Export all data (.json)"} onClick={exportData} />
@@ -2260,6 +2299,7 @@ export default function App() {
             currentUser={currentUser}
             staffCol={staffCol}
             locations={locationsCol.data}
+            onLocationsRefresh={locationsCol.refresh}
             servicesCol={servicesCol}
             inventoryCol={inventoryCol}
             auditCol={auditCol}
