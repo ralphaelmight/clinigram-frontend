@@ -1684,6 +1684,10 @@ function VisitDetailSheet({ visitId, inventory, services, patients, onClose, onM
   const [writeOffReason, setWriteOffReason] = useState("");
   const [showWriteOff, setShowWriteOff] = useState(false);
   const [writeOffBusy, setWriteOffBusy] = useState(false);
+  const [showLetterForm, setShowLetterForm] = useState(false);
+  const [letterBusy, setLetterBusy] = useState(false);
+  const [letterError, setLetterError] = useState("");
+  const [letterForm, setLetterForm] = useState({ date: "", body: "", doctorName: "", doctorTitles: "" });
 
   const refresh = useCallback(async () => {
     try { setVisit(await api.get(`/api/visits/${visitId}`)); }
@@ -1749,6 +1753,32 @@ function VisitDetailSheet({ visitId, inventory, services, patients, onClose, onM
       setInvoiceError(e.message);
     } finally {
       setInvoiceBusy(false);
+    }
+  };
+
+  const generateLetter = async () => {
+    setLetterError("");
+    const tab = window.open("", "_blank");
+    setLetterBusy(true);
+    try {
+      const patient = patients.find((p) => p.id === visit.patient_id);
+      const blob = await postForBlob("/api/documents/medical-letter", {
+        date: letterForm.date || new Date().toLocaleDateString("en-GB"),
+        patient: { name: visit.patient_name, gender: patient?.gender || "", age: patient?.age || "", folder: visit.hospital_number },
+        body: letterForm.body.split("\n").map((s) => s.trim()).filter(Boolean),
+        closing: "Thank you.",
+        doctorName: letterForm.doctorName,
+        doctorTitles: letterForm.doctorTitles.split("\n").map((s) => s.trim()).filter(Boolean),
+      });
+      const url = URL.createObjectURL(blob);
+      if (tab) tab.location.href = url;
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setShowLetterForm(false);
+    } catch (e) {
+      if (tab) tab.close();
+      setLetterError(e.message);
+    } finally {
+      setLetterBusy(false);
     }
   };
 
@@ -1890,6 +1920,25 @@ function VisitDetailSheet({ visitId, inventory, services, patients, onClose, onM
       )}
       {invoiceError && <div style={{ color: RED, fontSize: 12.5, fontWeight: 600, marginTop: 8 }}>{invoiceError}</div>}
       <PrimaryButton onClick={generateInvoice} color={TEAL} disabled={invoiceBusy}><FileText size={16} /> {invoiceBusy ? "Generating..." : "Generate Invoice"}</PrimaryButton>
+      {!showLetterForm && (
+        <GhostButton color={TEAL} onClick={() => { setLetterForm({ date: new Date().toLocaleDateString("en-GB"), body: "", doctorName: "", doctorTitles: "" }); setLetterError(""); setShowLetterForm(true); }}>
+          <ScrollText size={15} /> Generate Letter
+        </GhostButton>
+      )}
+      {showLetterForm && (
+        <div style={{ background: "#F9F9F9", border: `1px solid ${LINE}`, borderRadius: 12, padding: "12px 14px 10px", marginTop: 4 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>Medical / Referral Letter</div>
+          <Field label="Date"><Input value={letterForm.date} onChange={(e) => setLetterForm({ ...letterForm, date: e.target.value })} placeholder="e.g. 02/07/2026" /></Field>
+          <Field label="Body (one paragraph per line)"><TextArea value={letterForm.body} onChange={(e) => setLetterForm({ ...letterForm, body: e.target.value })} placeholder={"This is to certify that...\nThe above-named patient..."} style={{ minHeight: 100 }} /></Field>
+          <Field label="Doctor name"><Input value={letterForm.doctorName} onChange={(e) => setLetterForm({ ...letterForm, doctorName: e.target.value })} placeholder="e.g. Dr Idowu O.T" /></Field>
+          <Field label="Doctor title(s) (one per line)"><TextArea value={letterForm.doctorTitles} onChange={(e) => setLetterForm({ ...letterForm, doctorTitles: e.target.value })} placeholder={"Resident Family Physician\n& Medical Director"} /></Field>
+          {letterError && <div style={{ color: RED, fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>{letterError}</div>}
+          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+            <div style={{ flex: 1 }}><GhostButton onClick={() => setShowLetterForm(false)}>Cancel</GhostButton></div>
+            <div style={{ flex: 1 }}><PrimaryButton onClick={generateLetter} color={TEAL} disabled={letterBusy || !letterForm.body.trim() || !letterForm.doctorName.trim()}><ScrollText size={14} /> {letterBusy ? "Generating..." : "Generate"}</PrimaryButton></div>
+          </div>
+        </div>
+      )}
     </Sheet>
   );
 }
