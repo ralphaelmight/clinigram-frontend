@@ -1331,6 +1331,7 @@ function Inventory({ inventoryCol, patientsCol, dispensationsCol, restocksCol, c
   const [restockFor, setRestockFor] = useState(null);
   const [receipt, setReceipt] = useState(null);
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ name: "", category: "Pharmacy", quantity: "", unit: "tablets", reorderLevel: "", costPrice: "", sellingPrice: "", expiryDate: "" });
 
   const filtered = inventory.filter((i) => i.name.toLowerCase().includes(query.toLowerCase()));
@@ -1350,11 +1351,13 @@ function Inventory({ inventoryCol, patientsCol, dispensationsCol, restocksCol, c
 
   const save = async () => {
     if (!form.name || form.quantity === "") return;
+    setBusy(true);
     try {
       if (sheet === "add") await create(form);
       else await update(sheet, form);
       setSheet(null);
     } catch (e) { setError(e.message); }
+    finally { setBusy(false); }
   };
   const removeItem = async (id) => { try { await remove(id); setSheet(null); } catch (e) { setError(e.message); } };
 
@@ -1411,7 +1414,7 @@ function Inventory({ inventoryCol, patientsCol, dispensationsCol, restocksCol, c
             <Field label="Cost price (\u20a6)" style={{ flex: 1 }}><Input type="number" value={form.costPrice} onChange={(e) => setForm({ ...form, costPrice: e.target.value })} placeholder="0" /></Field>
             <Field label="Selling price (\u20a6)" style={{ flex: 1 }}><Input type="number" value={form.sellingPrice} onChange={(e) => setForm({ ...form, sellingPrice: e.target.value })} placeholder="0" /></Field>
           </div>
-          <PrimaryButton onClick={save}><Save size={16} /> Save item</PrimaryButton>
+          <PrimaryButton onClick={save} disabled={busy}><Save size={16} /> {busy ? "Saving..." : "Save item"}</PrimaryButton>
           {sheet !== "add" && <GhostButton color={TEAL} onClick={() => { setRestockFor(inventory.find((i) => i.id === sheet)); setSheet(null); }}><PackagePlus size={14} /> Restock this item</GhostButton>}
           {sheet !== "add" && <GhostButton onClick={() => removeItem(sheet)} color={RED}><Trash2 size={14} /> Remove item</GhostButton>}
         </Sheet>
@@ -1508,6 +1511,7 @@ function Finance({ transactionsCol, patientsCol, servicesCol, reconciliationsCol
   const [patientQuery, setPatientQuery] = useState("");
   const [linkedPatient, setLinkedPatient] = useState(null);
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ type: "revenue", category: "Consultation", amount: "", date: todayISO(), note: "" });
 
   const sorted = [...transactions].sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -1527,10 +1531,12 @@ function Finance({ transactionsCol, patientsCol, servicesCol, reconciliationsCol
 
   const save = async () => {
     if (!form.amount) return;
+    setBusy(true);
     try {
       await create({ ...form, linkedPatientName: linkedPatient ? linkedPatient.name : "", linkedHospitalNumber: linkedPatient ? linkedPatient.hospital_number : "" });
       setSheet(false);
     } catch (e) { setError(e.message); }
+    finally { setBusy(false); }
   };
 
   const removeTx = async (id) => { try { await remove(id); } catch (e) { /* ignore */ } };
@@ -1620,7 +1626,7 @@ function Finance({ transactionsCol, patientsCol, servicesCol, reconciliationsCol
             </Field>
           )}
           <Field label="Note (optional)"><TextArea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="e.g. additional details" /></Field>
-          <PrimaryButton onClick={save} color={form.type === "revenue" ? TEAL : RED}><Save size={16} /> Save {form.type}</PrimaryButton>
+          <PrimaryButton onClick={save} disabled={busy} color={form.type === "revenue" ? TEAL : RED}><Save size={16} /> {busy ? "Saving..." : `Save ${form.type}`}</PrimaryButton>
         </Sheet>
       )}
 
@@ -1636,6 +1642,7 @@ function Patients({ patientsCol }) {
   const [query, setQuery] = useState("");
   const [sheet, setSheet] = useState(null);
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ name: "", hospitalNumber: "", phone: "", note: "", gender: "", age: "" });
 
   const filtered = patients.filter((p) => p.name.toLowerCase().includes(query.toLowerCase()) || p.hospital_number.toLowerCase().includes(query.toLowerCase()));
@@ -1645,11 +1652,13 @@ function Patients({ patientsCol }) {
 
   const save = async () => {
     if (!form.name || !form.hospitalNumber) return;
+    setBusy(true);
     try {
       if (sheet === "add") await create(form);
       else await update(sheet, form);
       setSheet(null);
     } catch (e) { setError(e.message); }
+    finally { setBusy(false); }
   };
   const removeIt = async (id) => { try { await remove(id); setSheet(null); } catch (e) { setError(e.message); } };
 
@@ -1690,7 +1699,7 @@ function Patients({ patientsCol }) {
           <Field label="Phone (optional)"><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="08012345678" /></Field>
           <Field label="Note (optional)"><TextArea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Any reference note" /></Field>
           <div style={{ fontSize: 11.5, color: FAINT, marginBottom: 10, lineHeight: 1.5 }}>Recorded under Clinigram's lawful basis for healthcare service delivery, per NDPA 2023.</div>
-          <PrimaryButton onClick={save} color={RED}><Save size={16} /> Save folder</PrimaryButton>
+          <PrimaryButton onClick={save} disabled={busy} color={RED}><Save size={16} /> {busy ? "Saving..." : "Save folder"}</PrimaryButton>
           {sheet !== "add" && <GhostButton onClick={() => removeIt(sheet)} color={RED}><Trash2 size={14} /> Remove folder</GhostButton>}
         </Sheet>
       )}
