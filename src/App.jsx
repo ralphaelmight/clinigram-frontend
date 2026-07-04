@@ -1504,6 +1504,7 @@ function CashReconciliationSheet({ reconciliationsCol, onClose }) {
 
 function Finance({ transactionsCol, patientsCol, servicesCol, reconciliationsCol, summary, currentUser }) {
   const isAdmin = isAdminTier(currentUser.role);
+  const canSeeDailyRevenue = isAdmin || currentUser.role === "Nurse";
   const { data: transactions, create, remove } = transactionsCol;
   const [filter, setFilter] = useState("all");
   const [sheet, setSheet] = useState(false);
@@ -1547,14 +1548,30 @@ function Finance({ transactionsCol, patientsCol, servicesCol, reconciliationsCol
     return <Icon size={16} />;
   };
 
+  const todayTx = transactions.filter((t) => t.date === todayISO());
+  const todayRevenue = todayTx.filter((t) => t.type === "revenue").reduce((s, t) => s + Number(t.amount), 0);
+  const todayExpense = todayTx.filter((t) => t.type === "expense").reduce((s, t) => s + Number(t.amount), 0);
+
+  const topBarSubtitle = isAdmin && summary
+    ? `Net this week: ${fmtNaira(summary.netPosition)}`
+    : canSeeDailyRevenue
+    ? `Today's revenue: ${fmtNaira(todayRevenue)} · expenses: ${fmtNaira(todayExpense)}`
+    : "Log consultation, procedure & other fees";
+
   return (
     <div style={{ padding: "0 16px 100px" }}>
-      <TopBar title="Revenue & Expenditure" subtitle={isAdmin && summary ? `Net this week: ${fmtNaira(summary.netPosition)}` : "Log consultation, procedure & other fees"} />
+      <TopBar title="Revenue & Expenditure" subtitle={topBarSubtitle} />
       <div style={{ display: "flex", gap: 10, marginTop: -14, marginBottom: 14 }}>
         {isAdmin
           ? <Stat icon={<TrendingUp size={15} color={TEAL} />} color={TEAL} label="Revenue (wk)" value={fmtNaira(summary?.revenue)} />
+          : canSeeDailyRevenue
+          ? <Stat icon={<TrendingUp size={15} color={TEAL} />} color={TEAL} label="Revenue (today)" value={fmtNaira(todayRevenue)} />
           : <LockedStat icon={<TrendingUp size={15} color={TEAL} />} color={TEAL} label="Revenue (wk)" />}
-        <Stat icon={<TrendingDown size={15} color={RED} />} color={RED} label="Expenditure (wk)" value={fmtNaira(summary?.expenditure)} />
+        {isAdmin
+          ? <Stat icon={<TrendingDown size={15} color={RED} />} color={RED} label="Expenditure (wk)" value={fmtNaira(summary?.expenditure)} />
+          : canSeeDailyRevenue
+          ? <Stat icon={<TrendingDown size={15} color={RED} />} color={RED} label="Expenditure (today)" value={fmtNaira(todayExpense)} />
+          : <Stat icon={<TrendingDown size={15} color={RED} />} color={RED} label="Expenditure (wk)" value={fmtNaira(summary?.expenditure)} />}
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
