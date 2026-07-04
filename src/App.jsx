@@ -574,6 +574,162 @@ function AuthGate({ onLogin }) {
 
 /* ----------------------------- Manage Users (Admin) ----------------------------- */
 
+const CLINICAL_ROLES = ["Doctor", "Nurse", "Pharmacist", "Lab Scientist", "Paramedic"];
+const DOC_TYPE_LABELS = {
+  practice_license: "Practice License",
+  degree_certificate: "Degree Certificate",
+  id_card: "ID Card",
+  training_certificate: "Training Certificate",
+};
+
+function CredentialStatusBadge({ status }) {
+  const colors = { pending: "#F59E0B", verified: TEAL, rejected: RED };
+  return (
+    <span style={{ fontSize: 10.5, fontWeight: 700, color: "#fff", background: colors[status] || MUTE, borderRadius: 6, padding: "2px 7px" }}>
+      {status.toUpperCase()}
+    </span>
+  );
+}
+
+function StaffCredentials({ staffId, staffRole, currentUser }) {
+  const [creds, setCreds] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [showUpload, setShowUpload] = useState(false);
+  const [verifyingId, setVerifyingId] = useState(null);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [error, setError] = useState("");
+  const [form, setForm] = useState({ documentType: "practice_license", licenseNumber: "", issuingBody: "", issueDate: "", expiryDate: "" });
+  const [file, setFile] = useState(null);
+
+  const canAdmin = isAdminTier(currentUser.role);
+
+  const refresh = useCallback(async () => {
+    try { setCreds(await api.get(`/api/staff/${staffId}/credentials`)); }
+    catch (e) { setError(e.message); }
+    finally { setLoading(false); }
+  }, [staffId]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const upload = async () => {
+    if (!file) { setError("Select a file first."); return; }
+    setUploading(true); setError("");
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("documentType", form.documentType);
+      if (form.licenseNumber) fd.append("licenseNumber", form.licenseNumber);
+      if (form.issuingBody) fd.append("issuingBody", form.issuingBody);
+      if (form.issueDate) fd.append("issueDate", form.issueDate);
+      if (form.expiryDate) fd.append("expiryDate", form.expiryDate);
+      const token = localStorage.getItem(TOKEN_KEY);
+      const res = await fetch(`${BASE_URL}/api/staff/${staffId}/credentials`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      if (!res.ok) { const j = await res.json(); throw new Error(j.error || "Upload failed"); }
+      setShowUpload(false); setFile(null); setForm({ documentType: "practice_license", licenseNumber: "", issuingBody: "", issueDate: "", expiryDate: "" });
+      await refresh();
+    } catch (e) { setError(e.message); }
+    finally { setUploading(false); }
+  };
+
+  const verify = async (credId, status) => {
+    if (status === "rejected" && !rejectionReason.trim()) { setError("Enter a rejection reason."); return; }
+    try {
+      await api.put(`/api/credentials/${credId}/verify`, { status, rejection_reason: rejectionReason.trim() || undefined });
+      setVerifyingId(null); setRejectionReason("");
+      await refresh();
+    } catch (e) { setError(e.message); }
+  };
+
+  const openDoc = async (credId) => {
+    try {
+      const { url } = await api.get(`/api/credentials/${credId}/document`);
+      window.open(url, "_blank");
+    } catch (e) { setError(e.message); }
+  };
+
+  if (!CLINICAL_ROLES.includes(staffRole)) return null;
+
+  return (
+    <div style={{ marginTop: 20 }}>
+      <div style={{ fontWeight: 700, fontSize: 13, color: MUTE, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Credentials</div>
+      {error && <div style={{ color: RED, fontSize: 12, marginBottom: 8 }}>{error}</div>}
+      {loading ? <div style={{ fontSize: 12, color: FAINT }}>Loading…</div> : (
+        <>
+          {creds.length === 0 && <div style={{ fontSize: 12, color: FAINT, marginBottom: 8 }}>No credentials uploaded yet.</div>}
+          {creds.map((c) => (
+            <div key={c.id} style={{ border: `1px solid ${LINE}`, borderRadius: 10, padding: "10px 12px", marginBottom: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <div style={{ fontWeight: 600, fontSize: 13 }}>{DOC_TYPE_LABELS[c.document_type] || c.document_type}</div>
+                <CredentialStatusBadge status={c.verification_status} />
+              </div>
+              {c.license_number && <div style={{ fontSize: 11.5, color: MUTE, marginTop: 3 }}>License: {c.license_number}</div>}
+              {c.issuing_body && <div style={{ fontSize: 11.5, color: MUTE }}>Issued by: {c.issuing_body}</div>}
+              {c.expiry_date && <div style={{ fontSize: 11.5, color: MUTE }}>Expires: {c.expiry_date?.slice(0, 10)}</div>}
+              {c.verification_status === "rejected" && c.rejection_reason && (
+                <div style={{ fontSize: 11.5, color: RED, marginTop: 4 }}>Rejected: {c.rejection_reason}</div>
+              )}
+              {c.verification_status === "verified" && c.verified_by_name && (
+                <div style={{ fontSize: 11, color: FAINT, marginTop: 2 }}>Verified by {c.verified_by_name}</div>
+              )}
+              {canAdmin && (
+                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                  <button onClick={() => openDoc(c.id)} style={{ fontSize: 12, color: TEAL, fontWeight: 600, background: "none", border: "none", cursor: "pointer", padding: 0 }}>View document</button>
+                  {c.verification_status === "pending" && (
+                    verifyingId === c.id ? (
+                      <div style={{ flex: 1 }}>
+                        <Input placeholder="Rejection reason (if rejecting)" value={rejectionReason} onChange={(e) => setRejectionReason(e.target.value)} style={{ marginBottom: 6 }} />
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button onClick={() => verify(c.id, "verified")} style={{ fontSize: 12, color: "#fff", background: TEAL, border: "none", borderRadius: 7, padding: "5px 12px", cursor: "pointer", fontWeight: 700 }}>Approve</button>
+                          <button onClick={() => verify(c.id, "rejected")} style={{ fontSize: 12, color: "#fff", background: RED, border: "none", borderRadius: 7, padding: "5px 12px", cursor: "pointer", fontWeight: 700 }}>Reject</button>
+                          <button onClick={() => setVerifyingId(null)} style={{ fontSize: 12, color: FAINT, background: "none", border: "none", cursor: "pointer" }}>Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button onClick={() => { setVerifyingId(c.id); setRejectionReason(""); }} style={{ fontSize: 12, color: RED, fontWeight: 600, background: "none", border: "none", cursor: "pointer", padding: 0 }}>Review</button>
+                    )
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+
+          {showUpload ? (
+            <div style={{ border: `1px solid ${LINE}`, borderRadius: 10, padding: "12px", marginTop: 8 }}>
+              <Field label="Document type">
+                <select value={form.documentType} onChange={(e) => setForm({ ...form, documentType: e.target.value })} style={{ ...inputStyle }}>
+                  {Object.entries(DOC_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </Field>
+              <Field label="License / Certificate number (optional)"><Input value={form.licenseNumber} onChange={(e) => setForm({ ...form, licenseNumber: e.target.value })} /></Field>
+              <Field label="Issuing body (optional)"><Input value={form.issuingBody} onChange={(e) => setForm({ ...form, issuingBody: e.target.value })} /></Field>
+              <div style={{ display: "flex", gap: 8 }}>
+                <Field label="Issue date" style={{ flex: 1 }}><Input type="date" value={form.issueDate} onChange={(e) => setForm({ ...form, issueDate: e.target.value })} /></Field>
+                <Field label="Expiry date" style={{ flex: 1 }}><Input type="date" value={form.expiryDate} onChange={(e) => setForm({ ...form, expiryDate: e.target.value })} /></Field>
+              </div>
+              <Field label="File (PDF, JPG, PNG — max 10 MB)">
+                <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setFile(e.target.files[0] || null)} style={{ fontSize: 13 }} />
+              </Field>
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <PrimaryButton color={TEAL} onClick={upload} disabled={uploading || !file}>{uploading ? "Uploading…" : "Upload"}</PrimaryButton>
+                <GhostButton color={MUTE} onClick={() => { setShowUpload(false); setFile(null); }}>Cancel</GhostButton>
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => setShowUpload(true)} style={{ width: "100%", background: "#EAF8F8", color: TEAL, border: "none", borderRadius: 10, padding: "9px 0", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", justifyContent: "center", alignItems: "center", gap: 5, marginTop: 4 }}>
+              <span style={{ fontSize: 16 }}>+</span> Upload credential
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function ManageUsers({ staffCol, currentUser, onClose, locations = [] }) {
   const { data: users, create, update, remove } = staffCol;
   const [editing, setEditing] = useState(null);
@@ -660,6 +816,7 @@ function ManageUsers({ staffCol, currentUser, onClose, locations = [] }) {
             {currentUser.role === "Super Admin" && existing.role !== "Super Admin" && (
               <GhostButton color={RED} onClick={() => deleteAccount(existing)}><Trash2 size={14} /> Delete account</GhostButton>
             )}
+            <StaffCredentials staffId={existing.id} staffRole={existing.role} currentUser={currentUser} />
           </>
         )}
       </Sheet>
