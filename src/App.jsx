@@ -647,10 +647,13 @@ function StaffCredentials({ staffId, staffRole, currentUser }) {
   };
 
   const openDoc = async (credId) => {
+    // Open the tab synchronously inside the click event so the browser doesn't
+    // treat it as a popup. Navigate it to the signed URL once the API responds.
+    const tab = window.open("", "_blank");
     try {
       const { url } = await api.get(`/api/credentials/${credId}/document`);
-      window.open(url, "_blank");
-    } catch (e) { setError(e.message); }
+      tab.location.href = url;
+    } catch (e) { tab.close(); setError(e.message); }
   };
 
   if (!CLINICAL_ROLES.includes(staffRole)) return null;
