@@ -623,8 +623,9 @@ function StaffCredentials({ staffId, staffRole, currentUser }) {
       if (form.issuingBody) fd.append("issuingBody", form.issuingBody);
       if (form.issueDate) fd.append("issueDate", form.issueDate);
       if (form.expiryDate) fd.append("expiryDate", form.expiryDate);
-      const token = localStorage.getItem(TOKEN_KEY);
-      const res = await fetch(`${BASE_URL}/api/staff/${staffId}/credentials`, {
+      const token = getToken();
+      const apiBase = import.meta.env.VITE_API_URL || "http://localhost:4000";
+      const res = await fetch(`${apiBase}/api/staff/${staffId}/credentials`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: fd,
