@@ -1146,7 +1146,7 @@ function SettingsSheet({ onClose, currentUser, staffCol, locations, onLocationsR
       {currentUser.role === "Super Admin" && <SettingsRow icon={<LayoutDashboard size={16} color={TEAL} />} label="Manage branches" onClick={() => setView("manageBranches")} />}
       <SettingsRow icon={<ShieldCheck size={16} color={TEAL} />} label="Privacy & NDPA notice" onClick={() => setView("privacy")} />
       {isAdmin && <SettingsRow icon={<ScrollText size={16} color={RED} />} label="Audit log" onClick={() => setView("audit")} />}
-      <SettingsRow icon={<Download size={16} color={TEAL} />} label={exporting ? "Exporting..." : "Export all data (.json)"} onClick={exportData} />
+      {isAdmin && <SettingsRow icon={<Download size={16} color={TEAL} />} label={exporting ? "Exporting..." : "Export all data (.json)"} onClick={exportData} />}
       {isAdmin && <SettingsRow icon={<Eraser size={16} color={RED} />} label="Erase all data" onClick={() => setView("wipe")} danger />}
       <SettingsRow icon={<LogOut size={16} color={MUTE} />} label="Switch user / sign out" onClick={onLogout} />
       <div style={{ fontSize: 11, color: FAINT, marginTop: 14, textAlign: "center" }}>Connected to your facility's online server.</div>
