@@ -1166,8 +1166,13 @@ function SettingsRow({ icon, label, onClick, danger }) {
 
 /* ----------------------------- Dashboard ----------------------------- */
 
-function Dashboard({ inventoryCol, servicesCol, visitsCol, patientsCol, summary, setTab, onSettings, currentUser, onMutate }) {
+function Dashboard({ inventoryCol, servicesCol, visitsCol, patientsCol, transactionsCol, summary, setTab, onSettings, currentUser, onMutate }) {
   const isAdmin = isAdminTier(currentUser.role);
+  const canSeeDailyRevenue = isAdmin || currentUser.role === "Nurse";
+  const transactions = transactionsCol?.data || [];
+  const todayTx = transactions.filter((t) => t.date === todayISO());
+  const todayRevenue = todayTx.filter((t) => t.type === "revenue").reduce((s, t) => s + Number(t.amount), 0);
+  const todayExpense = todayTx.filter((t) => t.type === "expense").reduce((s, t) => s + Number(t.amount), 0);
   const lowStock = summary?.lowStockItems || [];
   const expiring = summary?.expiringItems || [];
   const outstandingVisits = (visitsCol?.data || []).filter((v) => Number(v.outstanding_balance) > 0).sort((a, b) => Number(b.outstanding_balance) - Number(a.outstanding_balance));
@@ -1179,8 +1184,14 @@ function Dashboard({ inventoryCol, servicesCol, visitsCol, patientsCol, summary,
       <div style={{ display: "flex", gap: 10, marginTop: -14, marginBottom: 12 }}>
         {isAdmin
           ? <Stat icon={<TrendingUp size={15} color={TEAL} />} color={TEAL} label="Revenue" value={fmtNaira(summary?.revenue)} sub="this week" />
+          : canSeeDailyRevenue
+          ? <Stat icon={<TrendingUp size={15} color={TEAL} />} color={TEAL} label="Revenue" value={fmtNaira(todayRevenue)} sub="today" />
           : <LockedStat icon={<TrendingUp size={15} color={TEAL} />} color={TEAL} label="Revenue" />}
-        <Stat icon={<TrendingDown size={15} color={RED} />} color={RED} label="Expenditure" value={fmtNaira(summary?.expenditure)} sub="this week" />
+        {isAdmin
+          ? <Stat icon={<TrendingDown size={15} color={RED} />} color={RED} label="Expenditure" value={fmtNaira(summary?.expenditure)} sub="this week" />
+          : canSeeDailyRevenue
+          ? <Stat icon={<TrendingDown size={15} color={RED} />} color={RED} label="Expenditure" value={fmtNaira(todayExpense)} sub="today" />
+          : <Stat icon={<TrendingDown size={15} color={RED} />} color={RED} label="Expenditure" value={fmtNaira(summary?.expenditure)} sub="this week" />}
       </div>
       <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
         <Stat icon={<Users size={15} color={RED} />} color={RED} label="New patients" value={summary?.newPatients ?? "\u2014"} sub="this week" />
@@ -2462,7 +2473,7 @@ export default function App() {
         }
       `}</style>
       <div style={{ maxWidth: 560, margin: "0 auto", position: "relative" }}>
-        {tab === "dashboard" && <Dashboard inventoryCol={inventoryCol} servicesCol={servicesCol} visitsCol={visitsCol} patientsCol={patientsCol} summary={weekSummary} setTab={setTab} onSettings={() => setShowSettings(true)} currentUser={currentUser} onMutate={refreshAllAfterMutation} />}
+        {tab === "dashboard" && <Dashboard inventoryCol={inventoryCol} servicesCol={servicesCol} visitsCol={visitsCol} patientsCol={patientsCol} transactionsCol={transactionsCol} summary={weekSummary} setTab={setTab} onSettings={() => setShowSettings(true)} currentUser={currentUser} onMutate={refreshAllAfterMutation} />}
         {tab === "inventory" && (
           <InventoryWithRefresh inventoryCol={inventoryCol} patientsCol={patientsCol} dispensationsCol={dispensationsCol} restocksCol={restocksCol} currentUser={currentUser} onMutate={refreshAllAfterMutation} />
         )}
