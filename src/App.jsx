@@ -2015,7 +2015,8 @@ function VisitDetailSheet({ visitId, inventory, services, patients, onClose, onM
     try {
       await api.put(`/api/visits/${visitId}/close`, { outstandingReason: closeReason });
       await refresh(); onMutate();
-      setShowCloseReason(false);
+      setShowCloseConfirm(false);
+      setCloseReason("");
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
   };
