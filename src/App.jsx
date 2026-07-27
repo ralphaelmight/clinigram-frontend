@@ -256,6 +256,28 @@ function Select({ options, ...props }) {
 }
 function TextArea(props) { return <textarea {...props} style={{ ...inputStyle, minHeight: 70, resize: "vertical", ...(props.style || {}) }} />; }
 
+function Toggle({ on, onChange }) {
+  return (
+    <button type="button" onClick={() => onChange(!on)} aria-pressed={on}
+      style={{ width: 44, height: 26, borderRadius: 999, border: "none", cursor: "pointer",
+        background: on ? TEAL : "#D3DBE0", position: "relative", transition: "background 0.15s", flex: "0 0 auto" }}>
+      <span style={{ position: "absolute", top: 3, left: on ? 21 : 3, width: 20, height: 20, borderRadius: "50%",
+        background: WHITE, transition: "left 0.15s", boxShadow: "0 1px 3px rgba(0,0,0,0.25)" }} />
+    </button>
+  );
+}
+function ToggleRow({ label, sub, on, onChange }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "8px 0" }}>
+      <div>
+        <div style={{ fontSize: 13.5, fontWeight: 600, color: INK }}>{label}</div>
+        {sub && <div style={{ fontSize: 11.5, color: FAINT, marginTop: 1 }}>{sub}</div>}
+      </div>
+      <Toggle on={on} onChange={onChange} />
+    </div>
+  );
+}
+
 function PrimaryButton({ children, onClick, disabled, color = TEAL }) {
   return (
     <button
@@ -1504,7 +1526,7 @@ function Inventory({ inventoryCol, patientsCol, dispensationsCol, restocksCol, c
   const [receipt, setReceipt] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState({ name: "", category: "Pharmacy", quantity: "", unit: "tablets", reorderLevel: "", costPrice: "", sellingPrice: "", expiryDate: "" });
+  const [form, setForm] = useState({ name: "", category: "Pharmacy", quantity: "", unit: "tablets", reorderLevel: "", costPrice: "", sellingPrice: "", expiryDate: "", sellableOnline: false, requiresPrescription: false });
 
   const filtered = inventory.filter((i) => i.name.toLowerCase().includes(query.toLowerCase()));
 
@@ -1513,11 +1535,12 @@ function Inventory({ inventoryCol, patientsCol, dispensationsCol, restocksCol, c
       name: item.name, category: item.category, quantity: item.quantity, unit: item.unit,
       reorderLevel: item.reorder_level, costPrice: item.cost_price, sellingPrice: item.selling_price,
       expiryDate: item.expiry_date ? item.expiry_date.slice(0, 10) : "",
+      sellableOnline: !!item.sellable_online, requiresPrescription: !!item.requires_prescription,
     });
     setError(""); setSheet(item.id);
   };
   const openAdd = () => {
-    setForm({ name: "", category: "Pharmacy", quantity: "", unit: "tablets", reorderLevel: "", costPrice: "", sellingPrice: "", expiryDate: "" });
+    setForm({ name: "", category: "Pharmacy", quantity: "", unit: "tablets", reorderLevel: "", costPrice: "", sellingPrice: "", expiryDate: "", sellableOnline: false, requiresPrescription: false });
     setError(""); setSheet("add");
   };
 
@@ -1557,6 +1580,7 @@ function Inventory({ inventoryCol, patientsCol, dispensationsCol, restocksCol, c
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 14.5 }}>{item.name}</div>
                     <div style={{ fontSize: 12, color: FAINT, marginTop: 2 }}>{item.category} \u00b7 updated {fmtDate(item.updated_at)}</div>
+                    {item.sellable_online && <div style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10.5, fontWeight: 700, color: TEAL, background: "#E7F5F5", padding: "2px 7px", borderRadius: 6, marginTop: 4 }}>Online{item.requires_prescription ? " \u00b7 Rx" : ""}</div>}
                     {(expired || expiringSoon) && <div style={{ fontSize: 11, color: RED, fontWeight: 700, marginTop: 3, display: "flex", alignItems: "center", gap: 4 }}><AlertOctagon size={11} /> {expired ? "Expired" : `Expires in ${exp}d`}</div>}
                   </div>
                   <div style={{ textAlign: "right" }}>
@@ -1585,6 +1609,14 @@ function Inventory({ inventoryCol, patientsCol, dispensationsCol, restocksCol, c
           <div style={{ display: "flex", gap: 10 }}>
             <Field label="Cost price (\u20a6)" style={{ flex: 1 }}><Input type="number" value={form.costPrice} onChange={(e) => setForm({ ...form, costPrice: e.target.value })} placeholder="0" /></Field>
             <Field label="Selling price (\u20a6)" style={{ flex: 1 }}><Input type="number" value={form.sellingPrice} onChange={(e) => setForm({ ...form, sellingPrice: e.target.value })} placeholder="0" /></Field>
+          </div>
+          <div style={{ marginBottom: 12, padding: "8px 12px", background: "#F7F9FA", borderRadius: 12, border: `1px solid ${LINE}` }}>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: TEAL, letterSpacing: 0.4 }}>ONLINE PHARMACY</div>
+            <div style={{ fontSize: 11.5, color: FAINT, marginBottom: 2 }}>Controls the Clinigram Telemedicine app</div>
+            <ToggleRow label="Sell online" sub="Show this item in the telemedicine pharmacy" on={!!form.sellableOnline} onChange={(v) => setForm({ ...form, sellableOnline: v })} />
+            {form.sellableOnline && (
+              <ToggleRow label="Needs prescription" sub="Require a prescription to order online" on={!!form.requiresPrescription} onChange={(v) => setForm({ ...form, requiresPrescription: v })} />
+            )}
           </div>
           <PrimaryButton onClick={save} disabled={busy}><Save size={16} /> {busy ? "Saving..." : "Save item"}</PrimaryButton>
           {sheet !== "add" && <GhostButton color={TEAL} onClick={() => { setRestockFor(inventory.find((i) => i.id === sheet)); setSheet(null); }}><PackagePlus size={14} /> Restock this item</GhostButton>}
