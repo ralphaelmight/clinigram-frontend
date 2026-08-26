@@ -1,0 +1,24 @@
+<svg viewBox="0 0 700 700" xmlns="http://www.w3.org/2000/svg" width="700" height="700">
+  <!-- Outer gray background circle -->
+  <circle cx="350" cy="350" r="340" fill="#d8d8d8"/>
+  <!-- Teal ring (thick) -->
+  <circle cx="350" cy="350" r="295" fill="#2ebfbc"/>
+  <!-- Red inner circle -->
+  <circle cx="350" cy="350" r="245" fill="#e8180c"/>
+  <!-- Phone outer teal border -->
+  <rect x="185" y="125" width="330" height="450" rx="52" ry="52" fill="#2ebfbc"/>
+  <!-- Phone white body -->
+  <rect x="200" y="140" width="300" height="420" rx="42" ry="42" fill="white"/>
+  <!-- Phone inner teal border line -->
+  <rect x="213" y="153" width="274" height="394" rx="32" ry="32" fill="none" stroke="#2ebfbc" stroke-width="6"/>
+  <!-- Speaker slot teal -->
+  <rect x="285" y="168" width="130" height="16" rx="8" ry="8" fill="#2ebfbc"/>
+  <!-- Red cross vertical bar -->
+  <rect x="310" y="260" width="80" height="210" rx="14" ry="14" fill="#e8180c"/>
+  <!-- Red cross horizontal bar -->
+  <rect x="240" y="320" width="220" height="80" rx="14" ry="14" fill="#e8180c"/>
+  <!-- White plus sign vertical -->
+  <rect x="341" y="295" width="18" height="150" rx="5" ry="5" fill="white"/>
+  <!-- White plus sign horizontal -->
+  <rect x="270" y="345" width="160" height="18" rx="5" ry="5" fill="white"/>
+</svg>
