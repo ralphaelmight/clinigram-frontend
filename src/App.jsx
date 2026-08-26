@@ -102,7 +102,7 @@ function useSummary(period, offset, ready) {
 
 function ClinigramMark({ size = 30 }) {
   return (
-    <img src="/logo.svg" alt="Clinigram" width={size} height={size} style={{ borderRadius: "50%", flexShrink: 0, objectFit: "cover" }} />
+    <img src="/logo.jpg" alt="Clinigram" width={size} height={size} style={{ borderRadius: "50%", flexShrink: 0, objectFit: "cover" }} />
   );
 }
 
