@@ -1232,17 +1232,6 @@ function Dashboard({ inventoryCol, servicesCol, visitsCol, patientsCol, transact
         </Card>
       )}
 
-      {outstandingVisits.length > 0 && (
-        <Card style={{ marginBottom: 14, border: `1.5px solid ${RED}33` }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}><AlertOctagon size={16} color={RED} /><div style={{ fontWeight: 700, fontSize: 14, color: RED }}>Outstanding balances</div></div>
-          {outstandingVisits.slice(0, 4).map((v) => (
-            <div key={v.id} onClick={() => setActiveVisitId(v.id)} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 13.5, borderTop: "1px solid #FBEAEA", cursor: "pointer" }}>
-              <span>{v.patient_name}{v.hospital_number ? <span style={{ color: FAINT }}> · HN {v.hospital_number}</span> : <span style={{ color: FAINT }}> · Walk-in</span>}</span><span style={{ fontWeight: 700, color: RED }}>{fmtNaira(v.outstanding_balance)}</span>
-            </div>
-          ))}
-          {outstandingVisits.length > 4 && <div onClick={() => setTab("visits")} style={{ fontSize: 12.5, color: TEAL, fontWeight: 700, marginTop: 6, cursor: "pointer" }}>View all {outstandingVisits.length} →</div>}
-        </Card>
-      )}
 
       {activeVisitId && (
         <VisitDetailSheet
