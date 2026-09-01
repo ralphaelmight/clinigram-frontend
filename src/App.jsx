@@ -5,7 +5,7 @@ import {
   ChevronRight, Pill, Stethoscope, BedDouble, FlaskConical, Receipt,
   CalendarDays, Save, Settings, Lock, ShieldCheck, Download,
   ScrollText, Eraser, KeyRound, ArrowLeft, UserPlus, LogOut,
-  UserCog, Power, RotateCcw, Syringe, History,
+  UserCog, Power, RotateCcw, History,
   FileText, Activity, CalendarClock, PackagePlus, Printer,
   Banknote, Link2, AlertOctagon, Tag, WifiOff
 } from "lucide-react";
@@ -1259,7 +1259,6 @@ function Dashboard({ inventoryCol, servicesCol, visitsCol, patientsCol, transact
       <div style={{ fontSize: 14, fontWeight: 700, color: RED, marginBottom: 8 }}>Quick actions</div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <QuickAction icon={<Pill size={18} color={TEAL} />} label="Add stock item" onClick={() => setTab("inventory")} />
-        <QuickAction icon={<Syringe size={18} color={RED} />} label="Dispense to patient" onClick={() => setTab("inventory")} />
         <QuickAction icon={<Receipt size={18} color={RED} />} label="Log transaction" onClick={() => setTab("finance")} />
         <QuickAction icon={<Banknote size={18} color={TEAL} />} label="Cash reconciliation" onClick={() => setTab("finance")} />
         <QuickAction icon={<Users size={18} color={RED} />} label="New patient folder" onClick={() => setTab("patients")} />
@@ -1332,187 +1331,14 @@ function RestockHistorySheet({ restocks, onClose }) {
   );
 }
 
-/* ----------------------------- Dispense + receipt ----------------------------- */
-
-function DispenseSheet({ inventory, patients, dispensationsCol, onClose, onReceipt }) {
-  const [patientQuery, setPatientQuery] = useState("");
-  const [patient, setPatient] = useState(null);
-  const [walkInName, setWalkInName] = useState("");
-  const [basket, setBasket] = useState([]);
-  const [pickId, setPickId] = useState("");
-  const [pickQty, setPickQty] = useState("1");
-  const [recordRevenue, setRecordRevenue] = useState(true);
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const matchedPatients = patientQuery
-    ? patients.filter((p) => p.name.toLowerCase().includes(patientQuery.toLowerCase()) || p.hospital_number.toLowerCase().includes(patientQuery.toLowerCase())).slice(0, 5)
-    : [];
-
-  const availableItems = inventory.filter((i) => Number(i.quantity) > 0);
-  const pickedItem = inventory.find((i) => i.id === pickId);
-  const inBasketQty = (itemId) => basket.filter((b) => b.itemId === itemId).reduce((s, b) => s + Number(b.qty), 0);
-
-  const addToBasket = () => {
-    if (!pickedItem) { setError("Choose an item"); return; }
-    const qty = Number(pickQty);
-    if (!qty || qty <= 0) { setError("Enter a valid quantity"); return; }
-    const already = inBasketQty(pickedItem.id);
-    if (already + qty > Number(pickedItem.quantity)) { setError(`Only ${pickedItem.quantity - already} ${pickedItem.unit} left in stock`); return; }
-    setBasket([...basket, { itemId: pickedItem.id, name: pickedItem.name, unit: pickedItem.unit, qty, sellingPrice: pickedItem.selling_price }]);
-    setPickId(""); setPickQty("1"); setError("");
-  };
-  const removeFromBasket = (idx) => setBasket(basket.filter((_, i) => i !== idx));
-  const total = basket.reduce((s, b) => s + Number(b.qty) * Number(b.sellingPrice || 0), 0);
-
-  const submit = async () => {
-    if (basket.length === 0) { setError("Add at least one item"); return; }
-    if (!patient && !walkInName.trim()) { setError("Enter a patient name or pick a folder"); return; }
-    setBusy(true);
-    try {
-      const record = await dispensationsCol.create({
-        patientName: patient ? patient.name : walkInName.trim(),
-        hospitalNumber: patient ? patient.hospital_number : "",
-        items: basket.map((b) => ({ itemId: b.itemId, qty: b.qty })),
-        recordRevenue,
-      });
-      onReceipt(record);
-    } catch (e) { setError(e.message); }
-    finally { setBusy(false); }
-  };
-
-  return (
-    <Sheet title="Dispense to patient" onClose={onClose}>
-      <Field label="Patient">
-        {patient ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#FDEAEA", borderRadius: 10, padding: "9px 12px" }}>
-            <Avatar name={patient.name} role="Front Desk" size={26} />
-            <div style={{ flex: 1, fontSize: 13.5, fontWeight: 600 }}>{patient.name} <span style={{ color: FAINT, fontWeight: 500 }}>\u00b7 HN {patient.hospital_number}</span></div>
-            <button onClick={() => setPatient(null)} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={15} color={MUTE} /></button>
-          </div>
-        ) : (
-          <>
-            <Input value={patientQuery} onChange={(e) => setPatientQuery(e.target.value)} placeholder="Search patient folder, or type a walk-in name" />
-            {matchedPatients.length > 0 && (
-              <div style={{ marginTop: 6, border: `1px solid ${LINE}`, borderRadius: 10, overflow: "hidden" }}>
-                {matchedPatients.map((p) => (
-                  <button key={p.id} onClick={() => { setPatient(p); setPatientQuery(""); }} style={{ width: "100%", textAlign: "left", padding: "9px 12px", background: WHITE, border: "none", borderBottom: `1px solid ${LINE}`, cursor: "pointer", fontSize: 13 }}>
-                    <b>{p.name}</b> <span style={{ color: FAINT }}>HN {p.hospital_number}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-            {matchedPatients.length === 0 && patientQuery && <div style={{ fontSize: 11.5, color: FAINT, marginTop: 5 }}>No folder match \u2014 will be recorded as walk-in "{patientQuery}"</div>}
-          </>
-        )}
-        {!patient && <Input value={walkInName} onChange={(e) => setWalkInName(e.target.value)} placeholder="Walk-in / OTC patient name" style={{ marginTop: 8, display: matchedPatients.length ? "none" : "block" }} />}
-      </Field>
-
-      <Field label="Add item from stock">
-        <div style={{ display: "flex", gap: 8 }}>
-          <select value={pickId} onChange={(e) => { setPickId(e.target.value); setError(""); }} style={{ ...inputStyle, flex: 2 }}>
-            <option value="">Select item...</option>
-            {availableItems.map((i) => <option key={i.id} value={i.id}>{i.name} ({i.quantity} {i.unit} left)</option>)}
-          </select>
-          <Input type="number" min="1" value={pickQty} onChange={(e) => setPickQty(e.target.value)} style={{ flex: 1 }} />
-        </div>
-        <button onClick={addToBasket} style={{ marginTop: 8, width: "100%", background: "#EAF8F8", color: TEAL, border: "none", borderRadius: 10, padding: "9px 0", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", justifyContent: "center", gap: 5 }}><Plus size={14} /> Add to dispensation</button>
-      </Field>
-
-      {basket.length > 0 && (
-        <div style={{ marginBottom: 12 }}>
-          {basket.map((b, i) => (
-            <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderTop: `1px solid #F1F4F6` }}>
-              <div style={{ fontSize: 13.5 }}>{b.name} <span style={{ color: FAINT }}>\u00d7 {b.qty} {b.unit}</span></div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                {b.sellingPrice > 0 && <span style={{ fontSize: 12.5, color: MUTE }}>{fmtNaira(b.qty * b.sellingPrice)}</span>}
-                <button onClick={() => removeFromBasket(i)} style={{ background: "none", border: "none", cursor: "pointer" }}><Trash2 size={14} color="#D9DEE1" /></button>
-              </div>
-            </div>
-          ))}
-          <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", fontWeight: 700, fontSize: 14 }}><span>Total value</span><span>{fmtNaira(total)}</span></div>
-          {total > 0 && (
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: MUTE, marginTop: 4, cursor: "pointer" }}>
-              <input type="checkbox" checked={recordRevenue} onChange={(e) => setRecordRevenue(e.target.checked)} /> Also record {fmtNaira(total)} as Pharmacy Sale revenue
-            </label>
-          )}
-        </div>
-      )}
-
-      {error && <div style={{ color: RED, fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>{error}</div>}
-      <PrimaryButton onClick={submit} color={RED} disabled={busy}><Syringe size={16} /> {busy ? "Saving..." : "Confirm dispensation"}</PrimaryButton>
-    </Sheet>
-  );
-}
-
-function DispenseHistorySheet({ dispensations, onClose, onPrint }) {
-  return (
-    <Sheet title="Dispensation history" onClose={onClose}>
-      {dispensations.length === 0 ? (
-        <EmptyState icon={<History size={36} />} text="No dispensations recorded yet" />
-      ) : (
-        dispensations.map((d) => (
-          <div key={d.id} style={{ padding: "10px 0", borderTop: `1px solid #F1F4F6` }}>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <div style={{ fontWeight: 700, fontSize: 13.5 }}>{d.patient_name}{d.hospital_number ? ` \u00b7 HN ${d.hospital_number}` : " (walk-in)"}</div>
-              <div style={{ fontSize: 11.5, color: FAINT }}>{fmtDate(d.date)}</div>
-            </div>
-            <div style={{ fontSize: 12.5, color: MUTE, marginTop: 3 }}>{d.items.map((it) => `${it.name} \u00d7${it.qty} ${it.unit}`).join(", ")}</div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
-              {d.recorded_revenue ? <div style={{ fontSize: 11.5, color: TEAL, fontWeight: 600 }}>{fmtNaira(d.total_value)} recorded as revenue</div> : <span />}
-              <button onClick={() => onPrint({ ...d, patientName: d.patient_name, hospitalNumber: d.hospital_number, totalValue: d.total_value, by: d.dispensed_by_name ? `${d.dispensed_by_name} (${d.dispensed_by_role})` : "" })} style={{ background: "none", border: "none", color: RED, fontSize: 11.5, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
-                <Printer size={12} /> Receipt
-              </button>
-            </div>
-          </div>
-        ))
-      )}
-    </Sheet>
-  );
-}
-
-function ReceiptOverlay({ record, onClose }) {
-  const total = record.totalValue || record.items.reduce((s, it) => s + (it.sellingPrice || 0) * it.qty, 0);
-  return (
-    <div className="app-no-print" style={{ position: "fixed", inset: 0, background: "rgba(20,30,40,0.55)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 18 }}>
-      <div id="receipt-print-area" style={{ background: WHITE, borderRadius: 16, padding: 24, width: "100%", maxWidth: 380, maxHeight: "85vh", overflowY: "auto" }}>
-        <div style={{ textAlign: "center", marginBottom: 14 }}>
-          <div style={{ display: "flex", justifyContent: "center", marginBottom: 6 }}><ClinigramMark size={40} /></div>
-          <div style={{ fontWeight: 800, fontSize: 16, color: RED }}>Clinigram Healthcare</div>
-          <div style={{ fontSize: 11, color: MUTE }}>Pharmacy Dispensation Receipt</div>
-        </div>
-        <div style={{ fontSize: 12.5, color: MUTE, marginBottom: 10, borderTop: `1px dashed ${LINE}`, borderBottom: `1px dashed ${LINE}`, padding: "8px 0" }}>
-          <div>Date: {fmtDate(record.date)}</div>
-          <div>Patient: <b style={{ color: INK }}>{record.patientName}</b>{record.hospitalNumber ? ` (HN ${record.hospitalNumber})` : " (walk-in)"}</div>
-          {record.by && <div>Dispensed by: {record.by}</div>}
-        </div>
-        {record.items.map((it, i) => (
-          <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "5px 0" }}>
-            <span>{it.name} \u00d7{it.qty} {it.unit}</span><span>{it.sellingPrice ? fmtNaira(it.qty * it.sellingPrice) : "\u2014"}</span>
-          </div>
-        ))}
-        <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 800, fontSize: 15, borderTop: `1px solid ${LINE}`, marginTop: 8, paddingTop: 8 }}><span>Total</span><span>{fmtNaira(total)}</span></div>
-        <div style={{ textAlign: "center", fontSize: 11, color: FAINT, marginTop: 16 }}>Thank you for choosing Clinigram Healthcare</div>
-        <div className="app-no-print" style={{ display: "flex", gap: 8, marginTop: 18 }}>
-          <button onClick={() => window.print()} style={{ flex: 1, background: RED, color: WHITE, border: "none", borderRadius: 10, padding: "11px 0", fontWeight: 700, fontSize: 13.5, cursor: "pointer", display: "flex", justifyContent: "center", gap: 6 }}><Printer size={15} /> Print</button>
-          <button onClick={onClose} style={{ flex: 1, background: "#F2F3F4", color: MUTE, border: "none", borderRadius: 10, padding: "11px 0", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>Close</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /* ----------------------------- Inventory ----------------------------- */
 
-function Inventory({ inventoryCol, patientsCol, dispensationsCol, restocksCol, currentUser }) {
+function Inventory({ inventoryCol, restocksCol, currentUser }) {
   const { data: inventory, create, update, remove } = inventoryCol;
   const [query, setQuery] = useState("");
   const [sheet, setSheet] = useState(null);
-  const [showDispense, setShowDispense] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
   const [showRestockHistory, setShowRestockHistory] = useState(false);
   const [restockFor, setRestockFor] = useState(null);
-  const [receipt, setReceipt] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ name: "", category: "Pharmacy", quantity: "", unit: "tablets", reorderLevel: "", costPrice: "", sellingPrice: "", expiryDate: "", sellableOnline: false, requiresPrescription: false });
@@ -1549,9 +1375,7 @@ function Inventory({ inventoryCol, patientsCol, dispensationsCol, restocksCol, c
     <div style={{ padding: "0 16px 100px" }}>
       <TopBar title="Pharmacy & Consumables" subtitle={`${inventory.length} items tracked`} />
       <div style={{ marginTop: 16 }}>
-        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-          <button onClick={() => setShowDispense(true)} style={{ flex: 1, background: RED, color: WHITE, border: "none", borderRadius: 12, padding: "11px 0", fontWeight: 700, fontSize: 13.5, cursor: "pointer", display: "flex", justifyContent: "center", gap: 6 }}><Syringe size={15} /> Dispense</button>
-          <button onClick={() => setShowHistory(true)} style={{ background: "#F2F3F4", color: MUTE, border: "none", borderRadius: 12, padding: "11px 14px", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}><History size={15} /></button>
+        <div style={{ display: "flex", gap: 8, marginBottom: 8, justifyContent: "flex-end" }}>
           <button onClick={() => setShowRestockHistory(true)} style={{ background: "#F2F3F4", color: MUTE, border: "none", borderRadius: 12, padding: "11px 14px", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}><PackagePlus size={15} /></button>
         </div>
         <SearchBar value={query} onChange={setQuery} placeholder="Search inventory..." />
@@ -1613,14 +1437,8 @@ function Inventory({ inventoryCol, patientsCol, dispensationsCol, restocksCol, c
         </Sheet>
       )}
 
-      {showDispense && (
-        <DispenseSheet inventory={inventory} patients={patientsCol.data} dispensationsCol={dispensationsCol}
-          onClose={() => setShowDispense(false)} onReceipt={(record) => { setShowDispense(false); setReceipt(record); inventoryCol.refresh(); }} />
-      )}
-      {showHistory && <DispenseHistorySheet dispensations={dispensationsCol.data} onClose={() => setShowHistory(false)} onPrint={(d) => setReceipt(d)} />}
       {showRestockHistory && <RestockHistorySheet restocks={restocksCol.data} onClose={() => setShowRestockHistory(false)} />}
       {restockFor && <RestockSheet item={restockFor} restocksCol={restocksCol} onClose={() => { setRestockFor(null); inventoryCol.refresh(); }} />}
-      {receipt && <ReceiptOverlay record={receipt} onClose={() => setReceipt(null)} />}
     </div>
   );
 }
@@ -2403,7 +2221,6 @@ function Report({ currentUser, ready }) {
         <Row label="Total expenditure" value={fmtNaira(summary.expenditure)} color={RED} />
         {isAdmin ? <Row label="Net position" value={fmtNaira(summary.netPosition)} color={summary.netPosition >= 0 ? TEAL : RED} bold /> : <LockedRow label="Net position" />}
         <Row label="New patient folders" value={summary.newPatients} />
-        <Row label="Dispensations to patients" value={summary.dispensationsCount} />
         <Row label="Items needing reorder" value={summary.lowStockItems.length} color={summary.lowStockItems.length ? RED : undefined} />
         <Row label="Items expiring/expired" value={summary.expiringItems.length} color={summary.expiringItems.length ? RED : undefined} />
         <Row label="Cash reconciliations logged" value={summary.reconciliationsCount} />
@@ -2478,7 +2295,6 @@ export default function App() {
   const inventoryCol = useApiCollection("/api/inventory", { enabled: ready });
   const transactionsCol = useApiCollection("/api/transactions", { enabled: ready });
   const patientsCol = useApiCollection("/api/patients", { enabled: ready });
-  const dispensationsCol = useApiCollection("/api/dispensations", { enabled: ready });
   const restocksCol = useApiCollection("/api/restocks", { enabled: ready });
   const servicesCol = useApiCollection("/api/services", { enabled: ready });
   const visitsCol = useApiCollection("/api/visits", { enabled: ready });
@@ -2499,7 +2315,7 @@ export default function App() {
   const wipeAll = async () => {
     await api.post("/api/admin/wipe");
     inventoryCol.refresh(); transactionsCol.refresh(); patientsCol.refresh();
-    dispensationsCol.refresh(); restocksCol.refresh(); reconciliationsCol.refresh();
+    restocksCol.refresh(); reconciliationsCol.refresh();
     visitsCol.refresh(); auditCol.refresh(); refreshSummary();
   };
 
@@ -2552,7 +2368,7 @@ export default function App() {
       <div style={{ maxWidth: 560, margin: "0 auto", position: "relative" }}>
         {tab === "dashboard" && <Dashboard inventoryCol={inventoryCol} servicesCol={servicesCol} visitsCol={visitsCol} patientsCol={patientsCol} transactionsCol={transactionsCol} summary={weekSummary} setTab={setTab} onSettings={() => setShowSettings(true)} currentUser={currentUser} onMutate={refreshAllAfterMutation} />}
         {tab === "inventory" && (
-          <InventoryWithRefresh inventoryCol={inventoryCol} patientsCol={patientsCol} dispensationsCol={dispensationsCol} restocksCol={restocksCol} currentUser={currentUser} onMutate={refreshAllAfterMutation} />
+          <InventoryWithRefresh inventoryCol={inventoryCol} restocksCol={restocksCol} currentUser={currentUser} onMutate={refreshAllAfterMutation} />
         )}
         {tab === "finance" && (
           <FinanceWithRefresh transactionsCol={transactionsCol} patientsCol={patientsCol} servicesCol={servicesCol} reconciliationsCol={reconciliationsCol} summary={weekSummary} currentUser={currentUser} onMutate={refreshAllAfterMutation} />
@@ -2585,7 +2401,7 @@ export default function App() {
 
 // Small wrappers so child mutations also refresh the dashboard/report summary figures.
 function InventoryWithRefresh({ onMutate, ...props }) {
-  return <Inventory {...props} inventoryCol={{ ...props.inventoryCol, create: wrap(props.inventoryCol.create, onMutate), update: wrap(props.inventoryCol.update, onMutate), remove: wrap(props.inventoryCol.remove, onMutate) }} restocksCol={{ ...props.restocksCol, create: wrap(props.restocksCol.create, onMutate) }} dispensationsCol={{ ...props.dispensationsCol, create: wrap(props.dispensationsCol.create, onMutate) }} />;
+  return <Inventory {...props} inventoryCol={{ ...props.inventoryCol, create: wrap(props.inventoryCol.create, onMutate), update: wrap(props.inventoryCol.update, onMutate), remove: wrap(props.inventoryCol.remove, onMutate) }} restocksCol={{ ...props.restocksCol, create: wrap(props.restocksCol.create, onMutate) }} />;
 }
 function FinanceWithRefresh({ onMutate, ...props }) {
   return <Finance {...props} transactionsCol={{ ...props.transactionsCol, create: wrap(props.transactionsCol.create, onMutate), remove: wrap(props.transactionsCol.remove, onMutate) }} reconciliationsCol={{ ...props.reconciliationsCol, create: wrap(props.reconciliationsCol.create, onMutate) }} />;
