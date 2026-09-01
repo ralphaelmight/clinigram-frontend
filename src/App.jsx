@@ -1237,7 +1237,7 @@ function Dashboard({ inventoryCol, servicesCol, visitsCol, patientsCol, transact
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}><AlertOctagon size={16} color={RED} /><div style={{ fontWeight: 700, fontSize: 14, color: RED }}>Outstanding balances</div></div>
           {outstandingVisits.slice(0, 4).map((v) => (
             <div key={v.id} onClick={() => setActiveVisitId(v.id)} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 13.5, borderTop: "1px solid #FBEAEA", cursor: "pointer" }}>
-              <span>{v.patient_name} <span style={{ color: FAINT }}>· HN {v.hospital_number}</span></span><span style={{ fontWeight: 700, color: RED }}>{fmtNaira(v.outstanding_balance)}</span>
+              <span>{v.patient_name}{v.hospital_number ? <span style={{ color: FAINT }}> · HN {v.hospital_number}</span> : <span style={{ color: FAINT }}> · Walk-in</span>}</span><span style={{ fontWeight: 700, color: RED }}>{fmtNaira(v.outstanding_balance)}</span>
             </div>
           ))}
           {outstandingVisits.length > 4 && <div onClick={() => setTab("visits")} style={{ fontSize: 12.5, color: TEAL, fontWeight: 700, marginTop: 6, cursor: "pointer" }}>View all {outstandingVisits.length} →</div>}
@@ -1930,11 +1930,12 @@ function Patients({ patientsCol }) {
 
 /* ----------------------------- Visits ----------------------------- */
 
-function OpenVisitSheet({ patients, visitsCol, onClose, onOpened }) {
-  const [mode, setMode] = useState("registered"); // "registered" | "walkin"
+function OpenVisitSheet({ patients, patientsCol, visitsCol, onClose, onOpened }) {
+  const [mode, setMode] = useState("registered"); // "registered" | "walkin" | "register"
   const [patientQuery, setPatientQuery] = useState("");
   const [patient, setPatient] = useState(null);
   const [walkinName, setWalkinName] = useState("");
+  const [regForm, setRegForm] = useState({ name: "", hospitalNumber: "", phone: "", gender: "", age: "", note: "" });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -1943,28 +1944,42 @@ function OpenVisitSheet({ patients, visitsCol, onClose, onOpened }) {
     : [];
 
   const submit = async () => {
+    setError("");
     if (mode === "registered" && !patient) { setError("Pick a patient folder or switch to walk-in"); return; }
     if (mode === "walkin" && !walkinName.trim()) { setError("Enter the patient's name"); return; }
+    if (mode === "register" && (!regForm.name.trim() || !regForm.hospitalNumber.trim())) { setError("Name and hospital number are required"); return; }
     setBusy(true);
     try {
-      const payload = mode === "registered"
-        ? { patientId: patient.id, patientName: patient.name, hospitalNumber: patient.hospital_number }
-        : { patientName: walkinName.trim() };
+      let payload;
+      if (mode === "registered") {
+        payload = { patientId: patient.id, patientName: patient.name, hospitalNumber: patient.hospital_number };
+      } else if (mode === "walkin") {
+        payload = { patientName: walkinName.trim() };
+      } else {
+        const newPatient = await patientsCol.create(regForm);
+        payload = { patientId: newPatient.id, patientName: newPatient.name, hospitalNumber: newPatient.hospital_number };
+      }
       const visit = await visitsCol.create(payload);
       onOpened(visit);
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
   };
 
+  const MODES = [
+    { id: "registered", label: "Registered" },
+    { id: "walkin", label: "Walk-in" },
+    { id: "register", label: "Register new" },
+  ];
+
   return (
     <Sheet title="Open a visit" onClose={onClose}>
-      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-        {[{ id: "registered", label: "Registered patient" }, { id: "walkin", label: "Walk-in" }].map((m) => (
-          <button key={m.id} onClick={() => { setMode(m.id); setError(""); }} style={{ flex: 1, padding: "8px 0", borderRadius: 10, border: `1.5px solid ${mode === m.id ? RED : LINE}`, background: mode === m.id ? "#FDEAEA" : WHITE, color: mode === m.id ? RED : MUTE, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{m.label}</button>
+      <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+        {MODES.map((m) => (
+          <button key={m.id} onClick={() => { setMode(m.id); setError(""); }} style={{ flex: 1, padding: "8px 0", borderRadius: 10, border: `1.5px solid ${mode === m.id ? RED : LINE}`, background: mode === m.id ? "#FDEAEA" : WHITE, color: mode === m.id ? RED : MUTE, fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>{m.label}</button>
         ))}
       </div>
 
-      {mode === "registered" ? (
+      {mode === "registered" && (
         <Field label="Patient folder">
           {patient ? (
             <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#FDEAEA", borderRadius: 10, padding: "9px 12px" }}>
@@ -1984,18 +1999,37 @@ function OpenVisitSheet({ patients, visitsCol, onClose, onOpened }) {
                   ))}
                 </div>
               )}
-              {matchedPatients.length === 0 && patientQuery && <div style={{ fontSize: 11.5, color: FAINT, marginTop: 5 }}>No match — try walk-in mode for unregistered patients.</div>}
+              {matchedPatients.length === 0 && patientQuery && <div style={{ fontSize: 11.5, color: FAINT, marginTop: 5 }}>No match — use Walk-in or Register new.</div>}
             </>
           )}
         </Field>
-      ) : (
+      )}
+
+      {mode === "walkin" && (
         <Field label="Patient name">
           <Input value={walkinName} onChange={(e) => setWalkinName(e.target.value)} placeholder="Enter patient name" />
+          <div style={{ fontSize: 11.5, color: FAINT, marginTop: 5 }}>No folder created — consultations unavailable for walk-ins.</div>
         </Field>
       )}
 
+      {mode === "register" && (
+        <>
+          <Field label="Patient name"><Input value={regForm.name} onChange={(e) => setRegForm({ ...regForm, name: e.target.value })} placeholder="Full name" /></Field>
+          <Field label="Hospital number"><Input value={regForm.hospitalNumber} onChange={(e) => setRegForm({ ...regForm, hospitalNumber: e.target.value })} placeholder="e.g. CG-2026-0142" /></Field>
+          <Field label="Gender (optional)">
+            <select value={regForm.gender} onChange={(e) => setRegForm({ ...regForm, gender: e.target.value })} style={inputStyle}>
+              <option value="">Select...</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+            </select>
+          </Field>
+          <Field label="Age (optional)"><Input value={regForm.age} onChange={(e) => setRegForm({ ...regForm, age: e.target.value })} placeholder="e.g. 34 or ADULT" /></Field>
+          <Field label="Phone (optional)"><Input value={regForm.phone} onChange={(e) => setRegForm({ ...regForm, phone: e.target.value })} placeholder="08012345678" /></Field>
+        </>
+      )}
+
       {error && <div style={{ color: RED, fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>{error}</div>}
-      <PrimaryButton onClick={submit} color={RED} disabled={busy}><Stethoscope size={16} /> {busy ? "Opening..." : "Open visit"}</PrimaryButton>
+      <PrimaryButton onClick={submit} color={RED} disabled={busy}><Stethoscope size={16} /> {busy ? "Opening..." : mode === "register" ? "Register & open visit" : "Open visit"}</PrimaryButton>
     </Sheet>
   );
 }
@@ -2034,9 +2068,10 @@ function VisitDetailSheet({ visitId, inventory, services, patients, onClose, onM
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  const isWalkin = visit && !visit.hospital_number;
   const referenceOptions = itemType === "medication" ? inventory.filter((i) => Number(i.quantity) > 0)
     : itemType === "investigation" ? services.filter((s) => s.active && s.category === "Investigation")
-    : services.filter((s) => s.active && s.category !== "Investigation");
+    : services.filter((s) => s.active && s.category !== "Investigation" && !(isWalkin && s.category === "Consultation"));
 
   const addItem = async () => {
     if (!refId) { setError("Choose what to add"); return; }
@@ -2302,7 +2337,7 @@ function Visits({ visitsCol, patientsCol, inventoryCol, servicesCol, onMutate })
             <Card key={v.id} style={{ marginBottom: 9, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }} onClickCapture={() => setActiveVisitId(v.id)}>
               <div>
                 <div style={{ fontWeight: 700, fontSize: 14 }}>{v.patient_name} <span style={{ fontSize: 11, fontWeight: 700, color: v.status === "open" ? TEAL : FAINT, marginLeft: 4 }}>{v.status === "open" ? "OPEN" : "CLOSED"}</span></div>
-                <div style={{ fontSize: 12, color: FAINT }}>HN {v.hospital_number} · {fmtNaira(v.total_amount)}{Number(v.outstanding_balance) > 0 ? ` · ${fmtNaira(v.outstanding_balance)} owed` : ""}</div>
+                <div style={{ fontSize: 12, color: FAINT }}>{v.hospital_number ? `HN ${v.hospital_number} · ` : "Walk-in · "}{fmtNaira(v.total_amount)}{Number(v.outstanding_balance) > 0 ? ` · ${fmtNaira(v.outstanding_balance)} owed` : ""}</div>
               </div>
               <ChevronRight size={17} color="#D9DEE1" />
             </Card>
@@ -2314,6 +2349,7 @@ function Visits({ visitsCol, patientsCol, inventoryCol, servicesCol, onMutate })
       {showOpen && (
         <OpenVisitSheet
           patients={patientsCol.data}
+          patientsCol={patientsCol}
           visitsCol={visitsCol}
           onClose={() => setShowOpen(false)}
           onOpened={(visit) => { setShowOpen(false); setActiveVisitId(visit.id); }}
