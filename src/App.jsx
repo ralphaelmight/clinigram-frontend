@@ -1606,7 +1606,7 @@ function Finance({ transactionsCol, patientsCol, servicesCol, reconciliationsCol
               <div style={{ width: 32, height: 32, borderRadius: 9, background: t.type === "revenue" ? "#EAF8F8" : "#FDEAEA", color: t.type === "revenue" ? TEAL : RED, display: "flex", alignItems: "center", justifyContent: "center" }}>{catIcon(t.category)}</div>
               <div>
                 <div style={{ fontWeight: 700, fontSize: 13.5 }}>{t.category}</div>
-                <div style={{ fontSize: 11.5, color: FAINT }}>{fmtDate(t.date)}{t.linked_patient_name ? ` \u00b7 ${t.linked_patient_name}` : ""}{t.note ? ` \u00b7 ${t.note}` : ""}</div>
+                <div style={{ fontSize: 11.5, color: FAINT }}>{fmtDate(t.date)}{t.linked_patient_name ? ` \u00b7 ${t.linked_patient_name}` : ""}{t.note ? ` \u00b7 ${t.note}` : ""}{t.created_by_name ? ` \u00b7 ${t.created_by_name}` : ""}</div>
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1986,9 +1986,12 @@ function VisitDetailSheet({ visitId, inventory, services, patients, onClose, onM
       {visit.items.length > 0 && (
         <div style={{ marginBottom: 12 }}>
           {visit.items.map((it) => (
-            <div key={it.id} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderTop: `1px solid #F1F4F6` }}>
-              <div style={{ fontSize: 13 }}>{it.description} <span style={{ color: FAINT }}>×{it.quantity}</span></div>
-              <div style={{ fontSize: 13 }}>{fmtNaira(it.total_price)}</div>
+            <div key={it.id} style={{ padding: "7px 0", borderTop: `1px solid #F1F4F6` }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <div style={{ fontSize: 13 }}>{it.description} <span style={{ color: FAINT }}>×{it.quantity}</span></div>
+                <div style={{ fontSize: 13 }}>{fmtNaira(it.total_price)}</div>
+              </div>
+              {it.recorded_by_name && <div style={{ fontSize: 11, color: FAINT, marginTop: 1 }}>{it.recorded_by_name} ({it.recorded_by_role})</div>}
             </div>
           ))}
         </div>
