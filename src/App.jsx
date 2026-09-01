@@ -1931,8 +1931,10 @@ function Patients({ patientsCol }) {
 /* ----------------------------- Visits ----------------------------- */
 
 function OpenVisitSheet({ patients, visitsCol, onClose, onOpened }) {
+  const [mode, setMode] = useState("registered"); // "registered" | "walkin"
   const [patientQuery, setPatientQuery] = useState("");
   const [patient, setPatient] = useState(null);
+  const [walkinName, setWalkinName] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -1941,10 +1943,14 @@ function OpenVisitSheet({ patients, visitsCol, onClose, onOpened }) {
     : [];
 
   const submit = async () => {
-    if (!patient) { setError("Pick a patient folder to open a visit"); return; }
+    if (mode === "registered" && !patient) { setError("Pick a patient folder or switch to walk-in"); return; }
+    if (mode === "walkin" && !walkinName.trim()) { setError("Enter the patient's name"); return; }
     setBusy(true);
     try {
-      const visit = await visitsCol.create({ patientId: patient.id, patientName: patient.name, hospitalNumber: patient.hospital_number });
+      const payload = mode === "registered"
+        ? { patientId: patient.id, patientName: patient.name, hospitalNumber: patient.hospital_number }
+        : { patientName: walkinName.trim() };
+      const visit = await visitsCol.create(payload);
       onOpened(visit);
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
@@ -1952,29 +1958,42 @@ function OpenVisitSheet({ patients, visitsCol, onClose, onOpened }) {
 
   return (
     <Sheet title="Open a visit" onClose={onClose}>
-      <Field label="Patient">
-        {patient ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#FDEAEA", borderRadius: 10, padding: "9px 12px" }}>
-            <Avatar name={patient.name} role="Front Desk" size={26} />
-            <div style={{ flex: 1, fontSize: 13.5, fontWeight: 600 }}>{patient.name} <span style={{ color: FAINT, fontWeight: 500 }}>· HN {patient.hospital_number}</span></div>
-            <button onClick={() => setPatient(null)} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={15} color={MUTE} /></button>
-          </div>
-        ) : (
-          <>
-            <Input value={patientQuery} onChange={(e) => setPatientQuery(e.target.value)} placeholder="Search patient folder by name or hospital number" />
-            {matchedPatients.length > 0 && (
-              <div style={{ marginTop: 6, border: `1px solid ${LINE}`, borderRadius: 10, overflow: "hidden" }}>
-                {matchedPatients.map((p) => (
-                  <button key={p.id} onClick={() => { setPatient(p); setPatientQuery(""); }} style={{ width: "100%", textAlign: "left", padding: "9px 12px", background: WHITE, border: "none", borderBottom: `1px solid ${LINE}`, cursor: "pointer", fontSize: 13 }}>
-                    <b>{p.name}</b> <span style={{ color: FAINT }}>HN {p.hospital_number}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-            {matchedPatients.length === 0 && patientQuery && <div style={{ fontSize: 11.5, color: FAINT, marginTop: 5 }}>No folder match — visits require a registered patient folder.</div>}
-          </>
-        )}
-      </Field>
+      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        {[{ id: "registered", label: "Registered patient" }, { id: "walkin", label: "Walk-in" }].map((m) => (
+          <button key={m.id} onClick={() => { setMode(m.id); setError(""); }} style={{ flex: 1, padding: "8px 0", borderRadius: 10, border: `1.5px solid ${mode === m.id ? RED : LINE}`, background: mode === m.id ? "#FDEAEA" : WHITE, color: mode === m.id ? RED : MUTE, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{m.label}</button>
+        ))}
+      </div>
+
+      {mode === "registered" ? (
+        <Field label="Patient folder">
+          {patient ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#FDEAEA", borderRadius: 10, padding: "9px 12px" }}>
+              <Avatar name={patient.name} role="Front Desk" size={26} />
+              <div style={{ flex: 1, fontSize: 13.5, fontWeight: 600 }}>{patient.name} <span style={{ color: FAINT, fontWeight: 500 }}>· HN {patient.hospital_number}</span></div>
+              <button onClick={() => setPatient(null)} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={15} color={MUTE} /></button>
+            </div>
+          ) : (
+            <>
+              <Input value={patientQuery} onChange={(e) => setPatientQuery(e.target.value)} placeholder="Search by name or hospital number" />
+              {matchedPatients.length > 0 && (
+                <div style={{ marginTop: 6, border: `1px solid ${LINE}`, borderRadius: 10, overflow: "hidden" }}>
+                  {matchedPatients.map((p) => (
+                    <button key={p.id} onClick={() => { setPatient(p); setPatientQuery(""); }} style={{ width: "100%", textAlign: "left", padding: "9px 12px", background: WHITE, border: "none", borderBottom: `1px solid ${LINE}`, cursor: "pointer", fontSize: 13 }}>
+                      <b>{p.name}</b> <span style={{ color: FAINT }}>HN {p.hospital_number}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {matchedPatients.length === 0 && patientQuery && <div style={{ fontSize: 11.5, color: FAINT, marginTop: 5 }}>No match — try walk-in mode for unregistered patients.</div>}
+            </>
+          )}
+        </Field>
+      ) : (
+        <Field label="Patient name">
+          <Input value={walkinName} onChange={(e) => setWalkinName(e.target.value)} placeholder="Enter patient name" />
+        </Field>
+      )}
+
       {error && <div style={{ color: RED, fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>{error}</div>}
       <PrimaryButton onClick={submit} color={RED} disabled={busy}><Stethoscope size={16} /> {busy ? "Opening..." : "Open visit"}</PrimaryButton>
     </Sheet>
