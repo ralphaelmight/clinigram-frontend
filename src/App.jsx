@@ -2068,10 +2068,10 @@ function VisitDetailSheet({ visitId, inventory, services, patients, onClose, onM
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  const isWalkin = visit && !visit.hospital_number;
+  const isWalkin = visit && (!visit.hospital_number || visit.hospital_number === "null");
   const referenceOptions = itemType === "medication" ? inventory.filter((i) => Number(i.quantity) > 0)
     : itemType === "investigation" ? services.filter((s) => s.active && s.category === "Investigation")
-    : services.filter((s) => s.active && s.category !== "Investigation" && !(isWalkin && s.category === "Consultation"));
+    : services.filter((s) => s.active && s.category !== "Investigation" && (!isWalkin || s.category !== "Consultation"));
 
   const addItem = async () => {
     if (!refId) { setError("Choose what to add"); return; }
