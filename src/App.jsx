@@ -473,7 +473,17 @@ function PinEntryScreen({ user, onSuccess, onBack }) {
   const submit = async () => {
     setBusy(true); setError("");
     try {
-      const r = await api.post("/api/auth/login", { staffId: user.id, pin });
+      let lat = null, lng = null;
+      try {
+        const pos = await new Promise((res, rej) =>
+          navigator.geolocation.getCurrentPosition(res, rej, { timeout: 10000, maximumAge: 0 })
+        );
+        lat = pos.coords.latitude;
+        lng = pos.coords.longitude;
+      } catch {
+        // Location denied or unavailable — server will reject if the branch requires it.
+      }
+      const r = await api.post("/api/auth/login", { staffId: user.id, pin, lat, lng });
       setToken(r.token);
       onSuccess(r.user);
     } catch (e) {
@@ -1032,6 +1042,10 @@ function SettingsSheet({ onClose, currentUser, staffCol, locations, onLocationsR
   const [branchForm, setBranchForm] = useState({ name: "", address: "" });
   const [branchError, setBranchError] = useState("");
   const [branchBusy, setBranchBusy] = useState(false);
+  const [geoEdit, setGeoEdit] = useState(null); // location id being edited
+  const [geoForm, setGeoForm] = useState({ lat: "", lng: "", radius_meters: "300", shift_start_time: "08:00" });
+  const [geoError, setGeoError] = useState("");
+  const [geoBusy, setGeoBusy] = useState(false);
 
   const isAdmin = isAdminTier(currentUser.role);
 
@@ -1072,18 +1086,69 @@ function SettingsSheet({ onClose, currentUser, staffCol, locations, onLocationsR
       } catch (e) { setBranchError(e.message); }
       finally { setBranchBusy(false); }
     };
+    const saveGeo = async () => {
+      setGeoBusy(true); setGeoError("");
+      try {
+        await api.put(`/api/locations/${geoEdit}`, {
+          lat: geoForm.lat ? Number(geoForm.lat) : null,
+          lng: geoForm.lng ? Number(geoForm.lng) : null,
+          radius_meters: Number(geoForm.radius_meters) || 300,
+          shift_start_time: geoForm.shift_start_time || "08:00",
+        });
+        setGeoEdit(null);
+        if (onLocationsRefresh) onLocationsRefresh();
+      } catch (e) { setGeoError(e.message); }
+      finally { setGeoBusy(false); }
+    };
+    const useMyLocation = () => {
+      if (!navigator.geolocation) { setGeoError("Geolocation not supported."); return; }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => setGeoForm((f) => ({ ...f, lat: pos.coords.latitude.toFixed(6), lng: pos.coords.longitude.toFixed(6) })),
+        () => setGeoError("Could not get location. Check browser permissions.")
+      );
+    };
     return (
-      <Sheet title="Manage branches" onClose={onClose} onBack={() => setView("main")}>
+      <Sheet title="Manage branches" onClose={onClose} onBack={() => { setGeoEdit(null); setView("main"); }}>
         <div style={{ marginBottom: 16 }}>
           {locations.map((loc) => (
-            <div key={loc.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", border: `1px solid ${LINE}`, borderRadius: 12, marginBottom: 9 }}>
-              <div style={{ width: 32, height: 32, borderRadius: 9, background: "#EAF8F8", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <LayoutDashboard size={16} color={TEAL} />
+            <div key={loc.id} style={{ border: `1px solid ${LINE}`, borderRadius: 12, marginBottom: 9, overflow: "hidden" }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px" }}>
+                <div style={{ width: 32, height: 32, borderRadius: 9, background: "#EAF8F8", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <LayoutDashboard size={16} color={TEAL} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>{loc.name}</div>
+                  {loc.address && <div style={{ fontSize: 12, color: MUTE, marginTop: 2 }}>{loc.address}</div>}
+                  <div style={{ fontSize: 11.5, color: loc.lat ? TEAL : FAINT, marginTop: 3 }}>
+                    {loc.lat ? `Geofence: ${Number(loc.lat).toFixed(4)}, ${Number(loc.lng).toFixed(4)} · ${loc.radius_meters || 300}m · Shift ${(loc.shift_start_time || "08:00").slice(0,5)}` : "No geofence set"}
+                  </div>
+                </div>
+                <button onClick={() => { setGeoEdit(loc.id); setGeoError(""); setGeoForm({ lat: loc.lat || "", lng: loc.lng || "", radius_meters: loc.radius_meters || "300", shift_start_time: (loc.shift_start_time || "08:00").slice(0,5) }); }}
+                  style={{ background: "none", border: `1px solid ${LINE}`, borderRadius: 8, padding: "4px 10px", fontSize: 12, color: TEAL, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>
+                  Configure
+                </button>
               </div>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 14 }}>{loc.name}</div>
-                {loc.address && <div style={{ fontSize: 12, color: MUTE, marginTop: 2 }}>{loc.address}</div>}
-              </div>
+              {geoEdit === loc.id && (
+                <div style={{ padding: "10px 12px 12px", borderTop: `1px solid ${LINE}`, background: "#F8FAFA" }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: INK, marginBottom: 8 }}>Geofence & shift time</div>
+                  <ErrorBanner message={geoError} />
+                  <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                    <Field label="Latitude" style={{ flex: 1 }}><Input value={geoForm.lat} onChange={(e) => setGeoForm((f) => ({ ...f, lat: e.target.value }))} placeholder="e.g. 8.4966" /></Field>
+                    <Field label="Longitude" style={{ flex: 1 }}><Input value={geoForm.lng} onChange={(e) => setGeoForm((f) => ({ ...f, lng: e.target.value }))} placeholder="e.g. 4.5421" /></Field>
+                  </div>
+                  <button onClick={useMyLocation} style={{ fontSize: 12, color: TEAL, fontWeight: 700, background: "none", border: `1px solid ${TEAL}`, borderRadius: 8, padding: "5px 10px", cursor: "pointer", marginBottom: 8 }}>
+                    Use my current location
+                  </button>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                    <Field label="Radius (m)" style={{ flex: 1 }}><Input type="number" value={geoForm.radius_meters} onChange={(e) => setGeoForm((f) => ({ ...f, radius_meters: e.target.value }))} /></Field>
+                    <Field label="Shift start" style={{ flex: 1 }}><Input type="time" value={geoForm.shift_start_time} onChange={(e) => setGeoForm((f) => ({ ...f, shift_start_time: e.target.value }))} /></Field>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <PrimaryButton color={TEAL} onClick={saveGeo} disabled={geoBusy} style={{ flex: 1 }}><Save size={14} /> {geoBusy ? "Saving..." : "Save"}</PrimaryButton>
+                    <button onClick={() => setGeoEdit(null)} style={{ flex: 1, background: "none", border: `1px solid ${LINE}`, borderRadius: 10, padding: "10px", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>Cancel</button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -1186,6 +1251,66 @@ function SettingsRow({ icon, label, onClick, danger }) {
   );
 }
 
+/* ----------------------------- Attendance card ----------------------------- */
+
+function AttendanceCard({ currentUser }) {
+  const [rows, setRows] = useState([]);
+  const isAdmin = isAdminTier(currentUser.role);
+
+  useEffect(() => {
+    api.get("/api/attendance/today").then(setRows).catch(() => {});
+  }, []);
+
+  const fmtTime = (iso) => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  };
+
+  if (!isAdmin) {
+    const me = rows[0];
+    if (!me) return null;
+    return (
+      <Card style={{ marginBottom: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+          <CalendarClock size={15} color={TEAL} />
+          <div style={{ fontWeight: 700, fontSize: 13.5, color: INK }}>My attendance today</div>
+        </div>
+        <div style={{ fontSize: 13, display: "flex", gap: 16 }}>
+          <span>In: <b>{fmtTime(me.login_at)}</b>{me.is_late && <span style={{ marginLeft: 5, color: RED, fontSize: 11, fontWeight: 700 }}>LATE</span>}</span>
+          {me.logout_at && <span>Out: <b>{fmtTime(me.logout_at)}</b></span>}
+        </div>
+      </Card>
+    );
+  }
+
+  if (rows.length === 0) return null;
+  return (
+    <Card style={{ marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <CalendarClock size={15} color={TEAL} />
+        <div style={{ fontWeight: 700, fontSize: 13.5, color: INK }}>Staff attendance today</div>
+      </div>
+      {rows.map((r) => (
+        <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: `1px solid ${LINE}` }}>
+          <Avatar name={r.staff_name} role={r.staff_role} size={30} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>
+              {r.staff_name}
+              {r.is_late && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: RED, background: "#FEECEC", borderRadius: 5, padding: "1px 6px" }}>LATE</span>}
+            </div>
+            <div style={{ fontSize: 11.5, color: FAINT }}>
+              In {fmtTime(r.login_at)}
+              {r.logout_at ? ` · Out ${fmtTime(r.logout_at)}` : " · Still in"}
+              {r.shift_start ? ` · Shift ${r.shift_start}` : ""}
+            </div>
+          </div>
+        </div>
+      ))}
+    </Card>
+  );
+}
+
 /* ----------------------------- Dashboard ----------------------------- */
 
 function Dashboard({ inventoryCol, servicesCol, visitsCol, patientsCol, transactionsCol, summary, setTab, onSettings, currentUser, onMutate }) {
@@ -1232,6 +1357,8 @@ function Dashboard({ inventoryCol, servicesCol, visitsCol, patientsCol, transact
         </Card>
       )}
 
+
+      <AttendanceCard currentUser={currentUser} />
 
       {activeVisitId && (
         <VisitDetailSheet
@@ -2323,7 +2450,10 @@ export default function App() {
   };
 
   const handleLogin = (user) => setCurrentUser(user);
-  const handleLogout = () => { setToken(null); setCurrentUser(null); setTab("dashboard"); };
+  const handleLogout = async () => {
+    try { await api.post("/api/auth/logout", {}); } catch { /* best-effort */ }
+    setToken(null); setCurrentUser(null); setTab("dashboard");
+  };
   // Automatically sign out after 5 minutes of no taps/clicks/typing/scrolling.
   const INACTIVITY_LIMIT_MS = 5 * 60 * 1000;
   useEffect(() => {
@@ -2331,7 +2461,8 @@ export default function App() {
     let timer;
     const reset = () => {
       clearTimeout(timer);
-      timer = setTimeout(() => {
+      timer = setTimeout(async () => {
+        try { await api.post("/api/auth/logout", {}); } catch { /* best-effort */ }
         setToken(null);
         setCurrentUser(null);
         setTab("dashboard");
