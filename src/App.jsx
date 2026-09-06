@@ -1462,6 +1462,7 @@ function RestockHistorySheet({ restocks, onClose }) {
 
 function Inventory({ inventoryCol, restocksCol, currentUser }) {
   const { data: inventory, create, update, remove } = inventoryCol;
+  const [tab, setTab] = useState("pharmacy"); // "pharmacy" | "consumables"
   const [query, setQuery] = useState("");
   const [sheet, setSheet] = useState(null);
   const [showRestockHistory, setShowRestockHistory] = useState(false);
@@ -1470,7 +1471,9 @@ function Inventory({ inventoryCol, restocksCol, currentUser }) {
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ name: "", category: "Pharmacy", quantity: "", unit: "tablets", reorderLevel: "", costPrice: "", sellingPrice: "", expiryDate: "", sellableOnline: false, requiresPrescription: false });
 
-  const filtered = inventory.filter((i) => i.name.toLowerCase().includes(query.toLowerCase()));
+  const isPharmacy = (item) => (item.category || "").toLowerCase() === "pharmacy";
+  const tabItems = inventory.filter((i) => tab === "pharmacy" ? isPharmacy(i) : !isPharmacy(i));
+  const filtered = tabItems.filter((i) => i.name.toLowerCase().includes(query.toLowerCase()));
 
   const openEdit = (item) => {
     setForm({
@@ -1482,7 +1485,8 @@ function Inventory({ inventoryCol, restocksCol, currentUser }) {
     setError(""); setSheet(item.id);
   };
   const openAdd = () => {
-    setForm({ name: "", category: "Pharmacy", quantity: "", unit: "tablets", reorderLevel: "", costPrice: "", sellingPrice: "", expiryDate: "", sellableOnline: false, requiresPrescription: false });
+    const defaultCategory = tab === "pharmacy" ? "Pharmacy" : "Consumable";
+    setForm({ name: "", category: defaultCategory, quantity: "", unit: "tablets", reorderLevel: "", costPrice: "", sellingPrice: "", expiryDate: "", sellableOnline: false, requiresPrescription: false });
     setError(""); setSheet("add");
   };
 
@@ -1498,16 +1502,34 @@ function Inventory({ inventoryCol, restocksCol, currentUser }) {
   };
   const removeItem = async (id) => { try { await remove(id); setSheet(null); } catch (e) { setError(e.message); } };
 
+  const pharmacyCount = inventory.filter(isPharmacy).length;
+  const consumablesCount = inventory.length - pharmacyCount;
+
+  const TabBtn = ({ id, label, count }) => (
+    <button onClick={() => { setTab(id); setQuery(""); }} style={{
+      flex: 1, padding: "9px 0", fontWeight: 700, fontSize: 13.5, border: "none", cursor: "pointer",
+      borderRadius: 10, transition: "all 0.15s",
+      background: tab === id ? RED : "transparent",
+      color: tab === id ? WHITE : MUTE,
+    }}>
+      {label} <span style={{ fontSize: 11, fontWeight: 600, opacity: 0.75 }}>({count})</span>
+    </button>
+  );
+
   return (
     <div style={{ padding: "0 16px 100px" }}>
-      <TopBar title="Pharmacy & Consumables" subtitle={`${inventory.length} items tracked`} />
+      <TopBar title="Stock" subtitle={`${inventory.length} items tracked`} />
       <div style={{ marginTop: 16 }}>
+        <div style={{ display: "flex", background: LINE, borderRadius: 12, padding: 3, marginBottom: 14, gap: 2 }}>
+          <TabBtn id="pharmacy" label="Pharmacy" count={pharmacyCount} />
+          <TabBtn id="consumables" label="Consumables" count={consumablesCount} />
+        </div>
         <div style={{ display: "flex", gap: 8, marginBottom: 8, justifyContent: "flex-end" }}>
           <button onClick={() => setShowRestockHistory(true)} style={{ background: "#F2F3F4", color: MUTE, border: "none", borderRadius: 12, padding: "11px 14px", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}><PackagePlus size={15} /></button>
         </div>
-        <SearchBar value={query} onChange={setQuery} placeholder="Search inventory..." />
+        <SearchBar value={query} onChange={setQuery} placeholder={`Search ${tab === "pharmacy" ? "pharmacy" : "consumables"}...`} />
         {filtered.length === 0 ? (
-          <EmptyState icon={<Package size={40} />} text="No items yet" sub="Tap + Add item to start tracking stock" />
+          <EmptyState icon={<Package size={40} />} text="No items yet" sub={`Tap + Add item to add ${tab === "pharmacy" ? "pharmacy stock" : "consumables"}`} />
         ) : (
           filtered.map((item) => {
             const low = Number(item.quantity) <= Number(item.reorder_level || 0);
