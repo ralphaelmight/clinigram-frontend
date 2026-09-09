@@ -1255,7 +1255,6 @@ function SettingsRow({ icon, label, onClick, danger }) {
 
 function AttendanceCard({ currentUser }) {
   const [rows, setRows] = useState([]);
-  const isAdmin = isAdminTier(currentUser.role);
 
   useEffect(() => {
     api.get("/api/attendance/today").then(setRows).catch(() => {});
@@ -1267,29 +1266,13 @@ function AttendanceCard({ currentUser }) {
     return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   };
 
-  if (!isAdmin) {
-    const me = rows[0];
-    if (!me) return null;
-    return (
-      <Card style={{ marginBottom: 14 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-          <CalendarClock size={15} color={TEAL} />
-          <div style={{ fontWeight: 700, fontSize: 13.5, color: INK }}>My attendance today</div>
-        </div>
-        <div style={{ fontSize: 13, display: "flex", gap: 16 }}>
-          <span>In: <b>{fmtTime(me.login_at)}</b>{me.is_late && <span style={{ marginLeft: 5, color: RED, fontSize: 11, fontWeight: 700 }}>LATE</span>}</span>
-          {me.logout_at && <span>Out: <b>{fmtTime(me.logout_at)}</b></span>}
-        </div>
-      </Card>
-    );
-  }
-
   if (rows.length === 0) return null;
   return (
     <Card style={{ marginBottom: 14 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
         <CalendarClock size={15} color={TEAL} />
-        <div style={{ fontWeight: 700, fontSize: 13.5, color: INK }}>Staff attendance today</div>
+        <div style={{ fontWeight: 700, fontSize: 13.5, color: INK }}>Staff on duty today</div>
+        <div style={{ marginLeft: "auto", fontSize: 11.5, color: FAINT }}>{rows.filter((r) => !r.logout_at).length} still in</div>
       </div>
       {rows.map((r) => (
         <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: `1px solid ${LINE}` }}>
@@ -1298,11 +1281,11 @@ function AttendanceCard({ currentUser }) {
             <div style={{ fontSize: 13, fontWeight: 600 }}>
               {r.staff_name}
               {r.is_late && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: RED, background: "#FEECEC", borderRadius: 5, padding: "1px 6px" }}>LATE</span>}
+              {!r.logout_at && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: TEAL, background: "#E7F5F5", borderRadius: 5, padding: "1px 6px" }}>IN</span>}
             </div>
             <div style={{ fontSize: 11.5, color: FAINT }}>
-              In {fmtTime(r.login_at)}
-              {r.logout_at ? ` · Out ${fmtTime(r.logout_at)}` : " · Still in"}
-              {r.shift_start ? ` · Shift ${r.shift_start}` : ""}
+              {r.staff_role} · In {fmtTime(r.login_at)}
+              {r.logout_at ? ` · Out ${fmtTime(r.logout_at)}` : ""}
             </div>
           </div>
         </div>
