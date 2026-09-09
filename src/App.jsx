@@ -474,14 +474,16 @@ function PinEntryScreen({ user, onSuccess, onBack }) {
     setBusy(true); setError("");
     try {
       let lat = null, lng = null;
-      try {
-        const pos = await new Promise((res, rej) =>
-          navigator.geolocation.getCurrentPosition(res, rej, { timeout: 10000, maximumAge: 0 })
-        );
-        lat = pos.coords.latitude;
-        lng = pos.coords.longitude;
-      } catch {
-        // Location denied or unavailable — server will reject if the branch requires it.
+      if (user.role !== "Super Admin") {
+        try {
+          const pos = await new Promise((res, rej) =>
+            navigator.geolocation.getCurrentPosition(res, rej, { timeout: 10000, maximumAge: 0 })
+          );
+          lat = pos.coords.latitude;
+          lng = pos.coords.longitude;
+        } catch {
+          // Location denied or unavailable — server will reject if the branch requires it.
+        }
       }
       const r = await api.post("/api/auth/login", { staffId: user.id, pin, lat, lng });
       setToken(r.token);
