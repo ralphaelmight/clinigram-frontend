@@ -1286,7 +1286,7 @@ function AttendanceCard({ currentUser }) {
               {!r.logout_at && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: TEAL, background: "#E7F5F5", borderRadius: 5, padding: "1px 6px" }}>IN</span>}
             </div>
             <div style={{ fontSize: 11.5, color: FAINT }}>
-              {r.staff_role} · In {fmtTime(r.login_at)}
+              {r.staff_role}{r.location_name ? ` · ${r.location_name}` : ""} · In {fmtTime(r.login_at)}
               {r.logout_at ? ` · Out ${fmtTime(r.logout_at)}` : ""}
             </div>
           </div>
@@ -2461,28 +2461,6 @@ export default function App() {
     try { await api.post("/api/auth/logout", {}); } catch { /* best-effort */ }
     setToken(null); setCurrentUser(null); setTab("dashboard");
   };
-  // Automatically sign out after 5 minutes of no taps/clicks/typing/scrolling.
-  const INACTIVITY_LIMIT_MS = 5 * 60 * 1000;
-  useEffect(() => {
-    if (!currentUser) return;
-    let timer;
-    const reset = () => {
-      clearTimeout(timer);
-      timer = setTimeout(async () => {
-        try { await api.post("/api/auth/logout", {}); } catch { /* best-effort */ }
-        setToken(null);
-        setCurrentUser(null);
-        setTab("dashboard");
-      }, INACTIVITY_LIMIT_MS);
-    };
-    const events = ["mousemove", "mousedown", "keydown", "touchstart", "scroll"];
-    events.forEach((e) => window.addEventListener(e, reset));
-    reset();
-    return () => {
-      clearTimeout(timer);
-      events.forEach((e) => window.removeEventListener(e, reset));
-    };
-  }, [currentUser]);
 
   if (checkingSession) {
     return <Shell><div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", color: FAINT, fontSize: 13.5 }}>Loading...</div></Shell>;
