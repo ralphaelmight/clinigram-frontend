@@ -169,6 +169,19 @@ function ClinigramWordmark() {
   );
 }
 
+/* ─────────────────────── responsive helpers ──────────────────────────── */
+
+function useIsDesktop() {
+  const [isDesktop, setIsDesktop] = useState(() => window.innerWidth >= 768);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const handler = (e) => setIsDesktop(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+  return isDesktop;
+}
+
 /* ───────────────────── geofence auto-logout ───────────────────────────── */
 
 function haversineMeters(lat1, lng1, lat2, lng2) {
@@ -2697,6 +2710,7 @@ export default function App() {
   }, []);
 
   const geofenceCountdown = useGeofenceLogout(currentUser, locationsCol.data, handleLogout);
+  const isDesktop = useIsDesktop();
 
   if (checkingSession) {
     return <Shell><div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100dvh", color: FAINT, fontSize: 13.5 }}>Loading...</div></Shell>;
@@ -2761,13 +2775,13 @@ export default function App() {
       )}
 
       <div className="fm-app-layout" style={geofenceCountdown !== null ? { paddingTop: 44 } : {}}>
-        <Sidebar
+        {isDesktop && <Sidebar
           tab={tab}
           setTab={setTab}
           currentUser={currentUser}
           onSettings={() => setShowSettings(true)}
           onLogout={handleLogout}
-        />
+        />}
 
         <div className="fm-main">
           {/* Tabs are mounted once and hidden with CSS — no unmount/remount on tab switch */}
