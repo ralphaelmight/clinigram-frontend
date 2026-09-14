@@ -1898,7 +1898,7 @@ function OpenVisitSheet({ patients, patientsCol, visitsCol, onClose, onOpened })
         payload = { patientName: walkinName.trim() };
       } else {
         const newPatient = await patientsCol.create(regForm);
-        payload = { patientId: newPatient.id, patientName: newPatient.name, hospitalNumber: newPatient.hospital_number };
+        payload = { patientId: newPatient.id, patientName: regForm.name, hospitalNumber: regForm.hospitalNumber };
       }
       const visit = await visitsCol.create(payload);
       onOpened(visit);
@@ -2267,7 +2267,7 @@ function Visits({ visitsCol, patientsCol, inventoryCol, servicesCol, onMutate })
   const [showOpen, setShowOpen] = useState(false);
   const [activeVisitId, setActiveVisitId] = useState(null);
 
-  const filtered = visits.filter((v) => v.patient_name.toLowerCase().includes(query.toLowerCase()) || v.hospital_number.toLowerCase().includes(query.toLowerCase()));
+  const filtered = visits.filter((v) => v.patient_name.toLowerCase().includes(query.toLowerCase()) || (v.hospital_number || "").toLowerCase().includes(query.toLowerCase()));
 
   return (
     <div style={{ padding: "0 16px 100px" }}>
