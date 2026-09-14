@@ -173,7 +173,7 @@ function ClinigramWordmark() {
 
 function Shell({ children }) {
   return (
-    <div id="app-root" style={{ background: SURFACE, minHeight: "100vh", fontFamily: "'Poppins', system-ui, sans-serif", color: INK }}>
+    <div id="app-root" style={{ background: SURFACE, minHeight: "100dvh", fontFamily: "'Poppins', system-ui, sans-serif", color: INK }}>
       {children}
     </div>
   );
@@ -255,7 +255,7 @@ function FAB({ onClick, label = "Add" }) {
 
 function Sheet({ title, onClose, children, onBack }) {
   return (
-    <div className="app-no-print" style={{ position: "fixed", inset: 0, background: "rgba(26,26,46,0.45)", zIndex: 50, display: "flex", alignItems: "flex-end" }} onClick={onClose}>
+    <div data-fm-modal className="app-no-print" style={{ position: "fixed", inset: 0, background: "rgba(26,26,46,0.45)", zIndex: 50, display: "flex", alignItems: "flex-end" }} onClick={onClose}>
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
@@ -438,7 +438,7 @@ const NAV_ITEMS = [
 
 function BottomNav({ tab, setTab }) {
   return (
-    <div className="app-no-print fm-bottom-nav" style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: WHITE, borderTop: `1px solid ${LINE}`, display: "flex", justifyContent: "space-around", padding: "8px 4px 10px", zIndex: 40 }}>
+    <div className="app-no-print fm-bottom-nav" style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: WHITE, borderTop: `1px solid ${LINE}`, display: "flex", justifyContent: "space-around", padding: "8px 4px 0", zIndex: 40 }}>
       {NAV_ITEMS.map((it) => {
         const active = tab === it.id;
         const Icon = it.icon;
@@ -460,7 +460,7 @@ function BottomNav({ tab, setTab }) {
 function Sidebar({ tab, setTab, currentUser, onSettings, onLogout }) {
   return (
     <aside className="app-no-print fm-sidebar" style={{
-      width: 256, flexShrink: 0, background: WHITE, height: "100vh", position: "sticky", top: 0,
+      width: 256, flexShrink: 0, background: WHITE, height: "100dvh", position: "sticky", top: 0,
       borderRight: `1px solid ${SUBTLE}`, display: "flex", flexDirection: "column", zIndex: 40,
       boxShadow: SHADOW_SOFT,
     }}>
@@ -2636,11 +2636,13 @@ export default function App() {
           #receipt-print-area { position: absolute; top: 0; left: 0; width: 100%; }
           .app-no-print { display: none !important; }
         }
+        /* Ensure the viewport fills correctly on Android Chrome */
+        html, body { height: 100%; }
         /* Sidebar layout — desktop/tablet */
-        .fm-app-layout { display: flex; min-height: 100vh; }
+        .fm-app-layout { display: flex; min-height: 100vh; min-height: 100dvh; }
         .fm-sidebar { display: none; }
-        .fm-main { flex: 1; min-width: 0; max-width: 560px; margin: 0 auto; position: relative; padding-bottom: 72px; }
-        .fm-bottom-nav { display: flex; }
+        .fm-main { flex: 1; min-width: 0; max-width: 560px; margin: 0 auto; position: relative; padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)); }
+        .fm-bottom-nav { display: flex; padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)) !important; }
         @media (min-width: 768px) {
           .fm-app-layout { align-items: flex-start; }
           .fm-sidebar { display: flex !important; flex-direction: column; }
