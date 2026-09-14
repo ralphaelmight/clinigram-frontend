@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   LayoutDashboard, Package, Wallet, Users, FileBarChart, Plus, X,
   Search, AlertTriangle, TrendingUp, TrendingDown, Trash2,
@@ -167,6 +167,92 @@ function ClinigramWordmark() {
       </div>
     </div>
   );
+}
+
+/* ───────────────────── geofence auto-logout ───────────────────────────── */
+
+function haversineMeters(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+const GEOFENCE_GRACE_SECONDS = 5 * 60; // 5 min grace before auto-logout
+
+function useGeofenceLogout(currentUser, locations, onLogout) {
+  const [countdown, setCountdown] = useState(null);
+  const outsideSinceRef = useRef(null);
+  const timerRef = useRef(null);
+  const watchIdRef = useRef(null);
+
+  useEffect(() => {
+    setCountdown(null);
+    outsideSinceRef.current = null;
+    clearInterval(timerRef.current);
+    if (watchIdRef.current != null) {
+      navigator.geolocation?.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+
+    if (!currentUser || currentUser.role === "Super Admin") return;
+    if (!locations?.length || !navigator.geolocation) return;
+
+    const loc = locations.find((l) => l.id === currentUser.location_id);
+    if (!loc?.lat || !loc?.lng) return;
+
+    const clinicLat = Number(loc.lat);
+    const clinicLng = Number(loc.lng);
+    const radius = Number(loc.radius_meters) || 300;
+
+    const onPosition = (pos) => {
+      const dist = haversineMeters(
+        pos.coords.latitude, pos.coords.longitude,
+        clinicLat, clinicLng
+      );
+      if (dist <= radius) {
+        // Back inside — cancel countdown
+        outsideSinceRef.current = null;
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+        setCountdown(null);
+      } else if (!outsideSinceRef.current) {
+        // Just left — start grace countdown
+        outsideSinceRef.current = Date.now();
+        const tick = () => {
+          const elapsed = Math.floor((Date.now() - outsideSinceRef.current) / 1000);
+          const remaining = GEOFENCE_GRACE_SECONDS - elapsed;
+          if (remaining <= 0) {
+            clearInterval(timerRef.current);
+            onLogout();
+          } else {
+            setCountdown(remaining);
+          }
+        };
+        tick();
+        timerRef.current = setInterval(tick, 1000);
+      }
+    };
+
+    watchIdRef.current = navigator.geolocation.watchPosition(onPosition, null, {
+      enableHighAccuracy: false,
+      maximumAge: 60000,
+      timeout: 30000,
+    });
+
+    return () => {
+      clearInterval(timerRef.current);
+      if (watchIdRef.current != null)
+        navigator.geolocation.clearWatch(watchIdRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id, currentUser?.location_id, locations, onLogout]);
+
+  return countdown; // null = inside (or inactive), number = seconds remaining
 }
 
 /* ----------------------------- shared UI bits ----------------------------- */
@@ -461,7 +547,7 @@ function Sidebar({ tab, setTab, currentUser, onSettings, onLogout }) {
   return (
     <aside className="app-no-print fm-sidebar" style={{
       width: 256, flexShrink: 0, background: WHITE, height: "100dvh", position: "sticky", top: 0,
-      borderRight: `1px solid ${SUBTLE}`, display: "flex", flexDirection: "column", zIndex: 40,
+      borderRight: `1px solid ${SUBTLE}`, flexDirection: "column", zIndex: 40,
       boxShadow: SHADOW_SOFT,
     }}>
       {/* Brand lockup */}
@@ -568,7 +654,7 @@ function CreateAdminScreen({ onDone }) {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: RED, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+    <div style={{ minHeight: "100dvh", background: RED, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div style={{ background: WHITE, borderRadius: 18, padding: 28, width: "100%", maxWidth: 360, textAlign: "center" }}>
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}><ClinigramMark size={48} /></div>
         <div style={{ fontWeight: 800, fontSize: 17, color: INK, marginBottom: 2 }}>Welcome to Clinigram Facility Manager</div>
@@ -592,7 +678,7 @@ function CreateAdminScreen({ onDone }) {
 function UserSelectScreen({ staffList, onPick }) {
   const active = staffList.filter((u) => u.active);
   return (
-    <div style={{ minHeight: "100vh", background: RED, padding: "40px 20px" }}>
+    <div style={{ minHeight: "100dvh", background: RED, padding: "40px 20px" }}>
       <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}><ClinigramMark size={48} /></div>
       <div style={{ textAlign: "center", color: WHITE, fontWeight: 800, fontSize: 17, marginBottom: 2 }}>Who's on duty?</div>
       <div style={{ textAlign: "center", color: "rgba(255,255,255,0.85)", fontSize: 12.5, marginBottom: 20 }}>Select your name to sign in</div>
@@ -644,7 +730,7 @@ function PinEntryScreen({ user, onSuccess, onBack }) {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: RED, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, position: "relative" }}>
+    <div style={{ minHeight: "100dvh", background: RED, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, position: "relative" }}>
       <div style={{ background: WHITE, borderRadius: 18, padding: 28, width: "100%", maxWidth: 360, textAlign: "center", position: "relative" }}>
         <button onClick={onBack} style={{ position: "absolute", top: 14, left: 14, background: "#F4F5F6", border: "none", borderRadius: 9, padding: 6, cursor: "pointer" }}><ArrowLeft size={16} color={MUTE} /></button>
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}><Avatar name={user.name} role={user.role} size={52} /></div>
@@ -663,7 +749,7 @@ function PinEntryScreen({ user, onSuccess, onBack }) {
 
 function ConnectionError({ onRetry }) {
   return (
-    <div style={{ minHeight: "100vh", background: RED, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+    <div style={{ minHeight: "100dvh", background: RED, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div style={{ background: WHITE, borderRadius: 18, padding: 28, width: "100%", maxWidth: 360, textAlign: "center" }}>
         <WifiOff size={36} color={RED} style={{ marginBottom: 10 }} />
         <div style={{ fontWeight: 800, fontSize: 16, color: INK, marginBottom: 6 }}>Can't reach the server</div>
@@ -679,7 +765,7 @@ function ConnectionError({ onRetry }) {
 
 function BranchSelectScreen({ locations, onPick }) {
   return (
-    <div style={{ minHeight: "100vh", background: RED, padding: "40px 20px" }}>
+    <div style={{ minHeight: "100dvh", background: RED, padding: "40px 20px" }}>
       <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}><ClinigramMark size={48} /></div>
       <div style={{ textAlign: "center", color: WHITE, fontWeight: 800, fontSize: 17, marginBottom: 2 }}>Select branch</div>
       <div style={{ textAlign: "center", color: "rgba(255,255,255,0.85)", fontSize: 12.5, marginBottom: 20 }}>Which location are you signing in from?</div>
@@ -736,14 +822,14 @@ function AuthGate({ onLogin }) {
 
   if (connErr) return <ConnectionError onRetry={retry} />;
   if (locations === null) {
-    return <div style={{ minHeight: "100vh", background: RED, display: "flex", alignItems: "center", justifyContent: "center", color: WHITE, fontSize: 13.5 }}>Connecting...</div>;
+    return <div style={{ minHeight: "100dvh", background: RED, display: "flex", alignItems: "center", justifyContent: "center", color: WHITE, fontSize: 13.5 }}>Connecting...</div>;
   }
   // No locations yet — first-run setup
   if (locations.length === 0) return <CreateAdminScreen onDone={onLogin} />;
   // Multi-branch: show picker first
   if (!branch) return <BranchSelectScreen locations={locations} onPick={setBranch} />;
   if (staffList === null) {
-    return <div style={{ minHeight: "100vh", background: RED, display: "flex", alignItems: "center", justifyContent: "center", color: WHITE, fontSize: 13.5 }}>Loading staff...</div>;
+    return <div style={{ minHeight: "100dvh", background: RED, display: "flex", alignItems: "center", justifyContent: "center", color: WHITE, fontSize: 13.5 }}>Loading staff...</div>;
   }
   if (staffList.length === 0) {
     return <CreateAdminScreen onDone={onLogin} />;
@@ -2605,13 +2691,15 @@ export default function App() {
   };
 
   const handleLogin = (user) => setCurrentUser(user);
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     try { await api.post("/api/auth/logout", {}); } catch { /* best-effort */ }
     setToken(null); setCurrentUser(null); setTab("dashboard");
-  };
+  }, []);
+
+  const geofenceCountdown = useGeofenceLogout(currentUser, locationsCol.data, handleLogout);
 
   if (checkingSession) {
-    return <Shell><div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", color: FAINT, fontSize: 13.5 }}>Loading...</div></Shell>;
+    return <Shell><div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100dvh", color: FAINT, fontSize: 13.5 }}>Loading...</div></Shell>;
   }
 
   if (!currentUser) {
@@ -2622,7 +2710,8 @@ export default function App() {
     <Shell>
       <style>{`
         @keyframes slideUp { from { transform: translateY(24px); opacity: 0.4; } to { transform: translateY(0); opacity: 1; } }
-        * { box-sizing: border-box; }
+        * { box-sizing: border-box; touch-action: pan-x pan-y; }
+        html { touch-action: pan-x pan-y; }
         ::selection { background: ${TEAL}33; }
         input:focus, select:focus, textarea:focus {
           border-color: ${TEAL} !important;
@@ -2636,16 +2725,14 @@ export default function App() {
           #receipt-print-area { position: absolute; top: 0; left: 0; width: 100%; }
           .app-no-print { display: none !important; }
         }
-        /* Ensure the viewport fills correctly on Android Chrome */
-        html, body { height: 100%; }
         /* Sidebar layout — desktop/tablet */
         .fm-app-layout { display: flex; min-height: 100vh; min-height: 100dvh; }
-        .fm-sidebar { display: none; }
+        .fm-sidebar { display: none !important; }
         .fm-main { flex: 1; min-width: 0; max-width: 560px; margin: 0 auto; position: relative; padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)); }
         .fm-bottom-nav { display: flex; padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)) !important; }
         @media (min-width: 768px) {
           .fm-app-layout { align-items: flex-start; }
-          .fm-sidebar { display: flex !important; flex-direction: column; }
+          .fm-sidebar { display: flex !important; flex-direction: column !important; }
           .fm-main { max-width: 720px; margin: 0; padding-bottom: 0; }
           .fm-bottom-nav { display: none !important; }
           .fm-topbar { display: none !important; }
@@ -2653,7 +2740,27 @@ export default function App() {
         }
       `}</style>
 
-      <div className="fm-app-layout">
+      {geofenceCountdown !== null && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, zIndex: 9999,
+          background: "#7c2222", color: WHITE,
+          padding: "10px 16px", display: "flex", alignItems: "center", gap: 10,
+          fontSize: 13.5, fontWeight: 600, boxShadow: "0 2px 12px rgba(0,0,0,0.25)",
+          animation: "slideUp 0.25s ease",
+        }}>
+          <AlertTriangle size={17} style={{ flexShrink: 0 }} />
+          <span style={{ flex: 1 }}>
+            You&apos;ve left the clinic vicinity.{" "}
+            Logging out in{" "}
+            <span style={{ fontVariantNumeric: "tabular-nums" }}>
+              {Math.floor(geofenceCountdown / 60)}:{String(geofenceCountdown % 60).padStart(2, "0")}
+            </span>
+            {" "}unless you return.
+          </span>
+        </div>
+      )}
+
+      <div className="fm-app-layout" style={geofenceCountdown !== null ? { paddingTop: 44 } : {}}>
         <Sidebar
           tab={tab}
           setTab={setTab}
