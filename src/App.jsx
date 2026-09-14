@@ -13,14 +13,27 @@ import { api, getToken, setToken, postForBlob } from "./api";
 
 /* ----------------------------- brand tokens ----------------------------- */
 
-const RED = "#EC1C24";
-const TEAL = "#42B4B8";
-const WHITE = "#FFFFFF";
-const INK = "#202733";
-const MUTE = "#6B7B87";
-const FAINT = "#9AA8B1";
-const LINE = "#ECEFF1";
-const BG = "#FFFFFF";
+const RED        = "#e93223";   // brand-red
+const RED_ALT    = "#fc0101";   // brand-red-alt (gradient end)
+const TEAL       = "#5db2b6";   // brand-teal
+const TEAL_ALT   = "#42b4b8";   // brand-teal-alt (gradient end)
+const WHITE      = "#ffffff";
+const BRAND_DARK = "#17181a";
+const INK        = "#1a1a2e";   // primary text
+const SURFACE    = "#f8f9fa";   // page background
+const SUBTLE     = "#f0f2f5";   // hover fills, dividers, chips
+const MUTE       = "#6b7280";   // gray-500
+const FAINT      = "#9ca3af";   // gray-400
+const LINE       = "#e5e7eb";   // gray-200
+
+// aliases kept for backward compat with existing code
+const BG   = SURFACE;
+
+// Shadows
+const SHADOW_CARD = "0 8px 24px -8px rgba(26,26,46,0.12)";
+const SHADOW_SOFT = "0 4px 16px -6px rgba(26,26,46,0.10)";
+const SHADOW_CTA  = "0 10px 24px -8px rgba(233,50,35,0.45)";
+const SHADOW_TEAL = "0 10px 24px -8px rgba(66,180,184,0.40)";
 
 const REVENUE_CATEGORIES = ["Consultation", "Folder Opening", "Procedure", "Investigation", "Admission", "Pharmacy Sale", "Other"];
 const EXPENSE_CATEGORIES = ["Salaries", "Utilities", "Supplies Purchase", "Equipment", "Maintenance", "Other"];
@@ -56,15 +69,33 @@ const EXPIRY_WARNING_DAYS = 60;
 
 /* ----------------------------- generic API-backed collection hook ----------------------------- */
 
+// Module-level SWR cache: endpoint → { data, ts }
+const _cache = new Map();
+// In-flight deduplication: endpoint → Promise
+const _inflight = new Map();
+
 function useApiCollection(endpoint, { enabled = true } = {}) {
-  const [data, setData] = useState([]);
-  const [loaded, setLoaded] = useState(false);
+  const cached = _cache.get(endpoint);
+  const [data, setData] = useState(cached?.data ?? []);
+  const [loaded, setLoaded] = useState(!!cached);
   const [error, setError] = useState(null);
 
   const refresh = useCallback(async () => {
     if (!enabled) return;
+    // Deduplicate concurrent calls for same endpoint
+    if (!_inflight.has(endpoint)) {
+      const req = api.get(endpoint).then((rows) => {
+        _cache.set(endpoint, { data: rows, ts: Date.now() });
+        _inflight.delete(endpoint);
+        return rows;
+      }).catch((e) => {
+        _inflight.delete(endpoint);
+        throw e;
+      });
+      _inflight.set(endpoint, req);
+    }
     try {
-      const rows = await api.get(endpoint);
+      const rows = await _inflight.get(endpoint);
       setData(rows);
       setError(null);
     } catch (e) {
@@ -76,9 +107,29 @@ function useApiCollection(endpoint, { enabled = true } = {}) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  const create = async (body) => { const r = await api.post(endpoint, body); await refresh(); return r; };
-  const update = async (id, body) => { const r = await api.put(`${endpoint}/${id}`, body); await refresh(); return r; };
-  const remove = async (id) => { const r = await api.del(`${endpoint}/${id}`); await refresh(); return r; };
+  const create = async (body) => {
+    const r = await api.post(endpoint, body);
+    // Optimistic: add to local state immediately, then confirm with refresh
+    setData((prev) => [...prev, r]);
+    _cache.set(endpoint, { data: [...((_cache.get(endpoint))?.data ?? []), r], ts: Date.now() });
+    refresh();
+    return r;
+  };
+
+  const update = async (id, body) => {
+    const r = await api.put(`${endpoint}/${id}`, body);
+    setData((prev) => prev.map((item) => (item.id === id ? { ...item, ...r } : item)));
+    refresh();
+    return r;
+  };
+
+  const remove = async (id) => {
+    const r = await api.del(`${endpoint}/${id}`);
+    // Optimistic: remove from local state immediately
+    setData((prev) => prev.filter((item) => item.id !== id));
+    refresh();
+    return r;
+  };
 
   return { data, loaded, error, refresh, create, update, remove, setData };
 }
@@ -122,7 +173,7 @@ function ClinigramWordmark() {
 
 function Shell({ children }) {
   return (
-    <div id="app-root" style={{ background: BG, minHeight: "100vh", fontFamily: "'Inter', system-ui, sans-serif", color: INK }}>
+    <div id="app-root" style={{ background: SURFACE, minHeight: "100vh", fontFamily: "'Poppins', system-ui, sans-serif", color: INK }}>
       {children}
     </div>
   );
@@ -130,24 +181,24 @@ function Shell({ children }) {
 
 function TopBar({ title, subtitle, onSettings }) {
   return (
-    <div style={{ background: RED, color: WHITE, padding: "16px 16px 22px", borderRadius: "0 0 18px 18px", position: "relative" }}>
+    <div className="fm-topbar" style={{ background: `linear-gradient(135deg, ${RED} 0%, #c4281c 100%)`, color: WHITE, padding: "16px 16px 24px", borderRadius: "0 0 24px 24px", position: "relative", boxShadow: SHADOW_CTA }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <ClinigramWordmark />
         {onSettings && (
-          <button onClick={onSettings} style={{ background: "rgba(255,255,255,0.18)", border: "none", borderRadius: 10, padding: 7, cursor: "pointer" }}>
+          <button onClick={onSettings} style={{ background: "rgba(255,255,255,0.18)", border: "none", borderRadius: 12, padding: 8, cursor: "pointer" }}>
             <Settings size={17} color={WHITE} />
           </button>
         )}
       </div>
-      <div style={{ fontSize: 19, fontWeight: 700, marginTop: 14 }}>{title}</div>
-      {subtitle && <div style={{ fontSize: 12.5, opacity: 0.9, marginTop: 2 }}>{subtitle}</div>}
+      <div style={{ fontSize: 20, fontWeight: 700, marginTop: 16, letterSpacing: "-0.015em" }}>{title}</div>
+      {subtitle && <div style={{ fontSize: 12.5, opacity: 0.88, marginTop: 3 }}>{subtitle}</div>}
     </div>
   );
 }
 
 function Card({ children, style, ...rest }) {
   return (
-    <div{...rest} style={{ background: WHITE, borderRadius: 14, padding: 16, border: `1px solid ${LINE}`, boxShadow: "0 1px 3px rgba(20,40,60,0.05)", ...style }}>
+    <div {...rest} style={{ background: WHITE, borderRadius: 16, padding: 20, border: "1px solid rgba(0,0,0,0.04)", boxShadow: SHADOW_CARD, ...style }}>
       {children}
     </div>
   );
@@ -190,10 +241,11 @@ function FAB({ onClick, label = "Add" }) {
       onClick={onClick}
       style={{
         position: "fixed", bottom: 88, right: 18, zIndex: 30,
-        background: TEAL, color: WHITE, border: "none", borderRadius: 28,
+        background: `linear-gradient(180deg, #64bcc0 0%, #4ba4a8 100%)`,
+        color: WHITE, border: "none", borderRadius: 28,
         padding: "13px 20px", display: "flex", alignItems: "center", gap: 6,
-        fontWeight: 700, fontSize: 14, boxShadow: "0 6px 16px rgba(66,180,184,0.45)",
-        cursor: "pointer"
+        fontWeight: 700, fontSize: 14, boxShadow: SHADOW_TEAL,
+        cursor: "pointer", letterSpacing: "-0.01em",
       }}
     >
       <Plus size={18} /> {label}
@@ -203,26 +255,26 @@ function FAB({ onClick, label = "Add" }) {
 
 function Sheet({ title, onClose, children, onBack }) {
   return (
-    <div className="app-no-print" style={{ position: "fixed", inset: 0, background: "rgba(20,30,40,0.45)", zIndex: 50, display: "flex", alignItems: "flex-end" }} onClick={onClose}>
+    <div className="app-no-print" style={{ position: "fixed", inset: 0, background: "rgba(26,26,46,0.45)", zIndex: 50, display: "flex", alignItems: "flex-end" }} onClick={onClose}>
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
           background: WHITE, width: "100%", maxHeight: "88vh", overflowY: "auto",
-          borderRadius: "20px 20px 0 0", padding: "16px 18px 28px",
-          animation: "slideUp 0.22s ease-out"
+          borderRadius: "24px 24px 0 0", padding: "16px 20px 32px",
+          animation: "slideUp 0.22s ease-out", boxShadow: "0 -8px 32px rgba(26,26,46,0.12)",
         }}
       >
-        <div style={{ width: 36, height: 4, background: LINE, borderRadius: 4, margin: "0 auto 14px" }} />
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <div style={{ width: 36, height: 4, background: SUBTLE, borderRadius: 4, margin: "0 auto 16px" }} />
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {onBack && (
-              <button onClick={onBack} style={{ background: "#F4F5F6", border: "none", borderRadius: 9, padding: 6, cursor: "pointer" }}>
+              <button onClick={onBack} style={{ background: SUBTLE, border: "none", borderRadius: 10, padding: 7, cursor: "pointer" }}>
                 <ArrowLeft size={16} color={MUTE} />
               </button>
             )}
-            <div style={{ fontSize: 17, fontWeight: 700, color: RED }}>{title}</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: INK, letterSpacing: "-0.015em" }}>{title}</div>
           </div>
-          <button onClick={onClose} style={{ background: "#F4F5F6", border: "none", borderRadius: 10, padding: 6, cursor: "pointer" }}>
+          <button onClick={onClose} style={{ background: SUBTLE, border: "none", borderRadius: 10, padding: 7, cursor: "pointer" }}>
             <X size={18} color={MUTE} />
           </button>
         </div>
@@ -242,8 +294,9 @@ function Field({ label, children, style }) {
 }
 
 const inputStyle = {
-  width: "100%", padding: "11px 12px", borderRadius: 10, border: `1.5px solid ${LINE}`,
-  fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: "#FBFCFD", color: INK
+  width: "100%", padding: "11px 12px", borderRadius: 12, border: `1px solid ${LINE}`,
+  fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: WHITE, color: INK,
+  transition: "border-color 0.15s, box-shadow 0.15s",
 };
 
 function Input(props) { return <input {...props} style={{ ...inputStyle, ...(props.style || {}) }} />; }
@@ -278,16 +331,28 @@ function ToggleRow({ label, sub, on, onChange }) {
   );
 }
 
-function PrimaryButton({ children, onClick, disabled, color = TEAL }) {
+function PrimaryButton({ children, onClick, disabled, color, teal }) {
+  const bg = disabled
+    ? "#d1d5db"
+    : teal
+    ? `linear-gradient(180deg, #64bcc0 0%, #4ba4a8 100%)`
+    : `linear-gradient(180deg, #f2402d 0%, #e42a1b 100%)`;
+  const shadow = disabled ? "none" : teal ? SHADOW_TEAL : SHADOW_CTA;
+  // `color` prop kept for backward compat but gradient takes precedence when not disabled
   return (
     <button
       onClick={onClick}
       disabled={disabled}
       style={{
-        width: "100%", background: disabled ? "#D9DEE1" : color, color: WHITE, border: "none",
-        borderRadius: 12, padding: "13px 0", fontSize: 15.5, fontWeight: 700, cursor: disabled ? "not-allowed" : "pointer",
-        marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 6
+        width: "100%", background: bg, color: WHITE, border: "none",
+        borderRadius: 16, padding: "13px 0", fontSize: 15, fontWeight: 700,
+        cursor: disabled ? "not-allowed" : "pointer",
+        marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+        boxShadow: shadow, letterSpacing: "-0.01em",
+        transition: "transform 0.1s, box-shadow 0.1s",
       }}
+      onMouseDown={disabled ? undefined : (e) => { e.currentTarget.style.transform = "scale(0.98)"; }}
+      onMouseUp={disabled ? undefined : (e) => { e.currentTarget.style.transform = "scale(1)"; }}
     >
       {children}
     </button>
@@ -304,7 +369,7 @@ function GhostButton({ children, onClick, color = MUTE }) {
 
 function ErrorBanner({ message }) {
   if (!message) return null;
-  return <div style={{ background: "#FDEAEA", color: RED, fontSize: 12.5, fontWeight: 600, padding: "9px 12px", borderRadius: 10, marginBottom: 10 }}>{message}</div>;
+  return <div style={{ background: `${RED}14`, color: RED, fontSize: 12.5, fontWeight: 600, padding: "10px 14px", borderRadius: 12, marginBottom: 10 }}>{message}</div>;
 }
 
 function EmptyState({ icon, text, sub }) {
@@ -346,42 +411,125 @@ function LockedRow({ label }) {
 
 function RoleBadge({ role }) {
   const admin = isAdminTier(role);
-  return <span style={{ fontSize: 10.5, fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: admin ? "#FDEAEA" : "#EAF8F8", color: admin ? RED : TEAL }}>{role}</span>;
+  return <span style={{ fontSize: 10.5, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: admin ? `${RED}18` : `${TEAL}22`, color: admin ? RED : TEAL }}>{role}</span>;
 }
 
 function Avatar({ name, role, size = 38 }) {
   const admin = isAdminTier(role);
   return (
-    <div style={{ width: size, height: size, borderRadius: size / 2, flexShrink: 0, background: admin ? "#FDEAEA" : "#EAF8F8", color: admin ? RED : TEAL, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: size * 0.4 }}>
+    <div style={{ width: size, height: size, borderRadius: size / 2, flexShrink: 0, background: admin ? `${RED}18` : `${TEAL}22`, color: admin ? RED : TEAL, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: size * 0.42 }}>
       {(name || "?").trim().charAt(0).toUpperCase()}
     </div>
   );
 }
 
-/* ----------------------------- Bottom Nav ----------------------------- */
+/* ----------------------------- Nav items (shared) ----------------------------- */
+
+const NAV_ITEMS = [
+  { id: "dashboard", icon: LayoutDashboard, label: "Home" },
+  { id: "inventory", icon: Package, label: "Stock" },
+  { id: "visits", icon: Stethoscope, label: "Visits" },
+  { id: "finance", icon: Wallet, label: "Finance" },
+  { id: "patients", icon: Users, label: "Patients" },
+  { id: "report", icon: FileBarChart, label: "Report" },
+];
+
+/* ----------------------------- Bottom Nav (mobile) ----------------------------- */
 
 function BottomNav({ tab, setTab }) {
-  const items = [
-    { id: "dashboard", icon: LayoutDashboard, label: "Home" },
-    { id: "inventory", icon: Package, label: "Stock" },
-    { id: "visits", icon: Stethoscope, label: "Visits" },
-    { id: "finance", icon: Wallet, label: "Finance" },
-    { id: "patients", icon: Users, label: "Patients" },
-    { id: "report", icon: FileBarChart, label: "Report" },
-  ];
   return (
-    <div className="app-no-print" style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: WHITE, borderTop: `1px solid ${LINE}`, display: "flex", justifyContent: "space-around", padding: "8px 4px 10px", zIndex: 40 }}>
-      {items.map((it) => {
+    <div className="app-no-print fm-bottom-nav" style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: WHITE, borderTop: `1px solid ${LINE}`, display: "flex", justifyContent: "space-around", padding: "8px 4px 10px", zIndex: 40 }}>
+      {NAV_ITEMS.map((it) => {
         const active = tab === it.id;
         const Icon = it.icon;
         return (
           <button key={it.id} onClick={() => setTab(it.id)} style={{ background: "none", border: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, cursor: "pointer", color: active ? RED : FAINT, flex: 1, padding: "2px 0" }}>
-            <Icon size={21} strokeWidth={active ? 2.4 : 2} />
+            <div style={{ padding: "4px 14px", borderRadius: 16, background: active ? `${RED}14` : "transparent", transition: "background 0.15s" }}>
+              <Icon size={21} strokeWidth={active ? 2.4 : 2} />
+            </div>
             <span style={{ fontSize: 10.5, fontWeight: active ? 700 : 500 }}>{it.label}</span>
           </button>
         );
       })}
     </div>
+  );
+}
+
+/* ----------------------------- Sidebar (desktop/tablet) ----------------------------- */
+
+function Sidebar({ tab, setTab, currentUser, onSettings, onLogout }) {
+  return (
+    <aside className="app-no-print fm-sidebar" style={{
+      width: 256, flexShrink: 0, background: WHITE, height: "100vh", position: "sticky", top: 0,
+      borderRight: `1px solid ${SUBTLE}`, display: "flex", flexDirection: "column", zIndex: 40,
+      boxShadow: SHADOW_SOFT,
+    }}>
+      {/* Brand lockup */}
+      <div style={{ padding: "22px 20px 16px", borderBottom: `1px solid ${SUBTLE}` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <ClinigramMark size={32} />
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: INK, letterSpacing: "-0.02em", lineHeight: 1.15 }}>Clinigram</div>
+            <div style={{ fontSize: 9.5, letterSpacing: 0.8, color: MUTE, fontWeight: 700, textTransform: "uppercase" }}>Facility Manager</div>
+          </div>
+        </div>
+        {currentUser && (
+          <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 9 }}>
+            <Avatar name={currentUser.name} role={currentUser.role} size={34} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: INK, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{currentUser.name}</div>
+              <RoleBadge role={currentUser.role} />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Nav items */}
+      <nav style={{ flex: 1, padding: "12px 12px", overflowY: "auto" }}>
+        {NAV_ITEMS.map((it) => {
+          const active = tab === it.id;
+          const Icon = it.icon;
+          return (
+            <button key={it.id} onClick={() => setTab(it.id)} style={{
+              width: "100%", display: "flex", alignItems: "center", gap: 10,
+              background: active ? RED : "transparent",
+              border: "none", borderRadius: 12, padding: "10px 14px", marginBottom: 2,
+              cursor: "pointer", color: active ? WHITE : MUTE,
+              fontWeight: active ? 700 : 600, fontSize: 13.5,
+              boxShadow: active ? SHADOW_CTA : "none",
+              transition: "background 0.15s, color 0.15s, box-shadow 0.15s",
+              fontFamily: "inherit", letterSpacing: active ? "-0.01em" : "normal",
+            }}
+            onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = SUBTLE; }}
+            onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}
+            >
+              <Icon size={18} strokeWidth={active ? 2.4 : 2} />
+              {it.label}
+            </button>
+          );
+        })}
+      </nav>
+
+      {/* Footer actions */}
+      <div style={{ padding: "12px 12px 20px", borderTop: `1px solid ${SUBTLE}` }}>
+        {onSettings && (
+          <button onClick={onSettings} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, background: "transparent", border: "none", borderRadius: 12, padding: "9px 14px", cursor: "pointer", color: MUTE, fontWeight: 600, fontSize: 13.5, fontFamily: "inherit", marginBottom: 2 }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = SUBTLE; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+          >
+            <Settings size={17} /> Settings
+          </button>
+        )}
+        {onLogout && (
+          <button onClick={onLogout} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, background: "transparent", border: "none", borderRadius: 12, padding: "9px 14px", cursor: "pointer", color: MUTE, fontWeight: 600, fontSize: 13.5, fontFamily: "inherit" }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = SUBTLE; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+          >
+            <LogOut size={17} /> Sign out
+          </button>
+        )}
+      </div>
+    </aside>
   );
 }
 
@@ -2476,6 +2624,11 @@ export default function App() {
         @keyframes slideUp { from { transform: translateY(24px); opacity: 0.4; } to { transform: translateY(0); opacity: 1; } }
         * { box-sizing: border-box; }
         ::selection { background: ${TEAL}33; }
+        input:focus, select:focus, textarea:focus {
+          border-color: ${TEAL} !important;
+          box-shadow: 0 0 0 2px ${TEAL}40 !important;
+          outline: none !important;
+        }
         @media print {
           #receipt-print-area { display: none; }
           body * { visibility: hidden; }
@@ -2483,37 +2636,69 @@ export default function App() {
           #receipt-print-area { position: absolute; top: 0; left: 0; width: 100%; }
           .app-no-print { display: none !important; }
         }
+        /* Sidebar layout — desktop/tablet */
+        .fm-app-layout { display: flex; min-height: 100vh; }
+        .fm-sidebar { display: none; }
+        .fm-main { flex: 1; min-width: 0; max-width: 560px; margin: 0 auto; position: relative; padding-bottom: 72px; }
+        .fm-bottom-nav { display: flex; }
+        @media (min-width: 768px) {
+          .fm-app-layout { align-items: flex-start; }
+          .fm-sidebar { display: flex !important; flex-direction: column; }
+          .fm-main { max-width: 720px; margin: 0; padding-bottom: 0; }
+          .fm-bottom-nav { display: none !important; }
+          .fm-topbar { display: none !important; }
+          .fm-main > div:first-child { padding-top: 0; }
+        }
       `}</style>
-      <div style={{ maxWidth: 560, margin: "0 auto", position: "relative" }}>
-        {tab === "dashboard" && <Dashboard inventoryCol={inventoryCol} servicesCol={servicesCol} visitsCol={visitsCol} patientsCol={patientsCol} transactionsCol={transactionsCol} summary={weekSummary} setTab={setTab} onSettings={() => setShowSettings(true)} currentUser={currentUser} onMutate={refreshAllAfterMutation} />}
-        {tab === "inventory" && (
-          <InventoryWithRefresh inventoryCol={inventoryCol} restocksCol={restocksCol} currentUser={currentUser} onMutate={refreshAllAfterMutation} />
-        )}
-        {tab === "finance" && (
-          <FinanceWithRefresh transactionsCol={transactionsCol} patientsCol={patientsCol} servicesCol={servicesCol} reconciliationsCol={reconciliationsCol} summary={weekSummary} currentUser={currentUser} onMutate={refreshAllAfterMutation} />
-        )}
-        {tab === "visits" && (
-          <Visits visitsCol={visitsCol} patientsCol={patientsCol} inventoryCol={inventoryCol} servicesCol={servicesCol} onMutate={refreshAllAfterMutation} />
-        )}
-        {tab === "patients" && <Patients patientsCol={patientsCol} />}
-        {tab === "report" && <Report currentUser={currentUser} ready={ready} />}
-        <BottomNav tab={tab} setTab={setTab} />
 
-        {showSettings && (
-          <SettingsSheet
-            onClose={() => setShowSettings(false)}
-            currentUser={currentUser}
-            staffCol={staffCol}
-            locations={locationsCol.data}
-            onLocationsRefresh={locationsCol.refresh}
-            servicesCol={servicesCol}
-            inventoryCol={inventoryCol}
-            auditCol={auditCol}
-            onWipe={wipeAll}
-            onLogout={handleLogout}
-          />
-        )}
+      <div className="fm-app-layout">
+        <Sidebar
+          tab={tab}
+          setTab={setTab}
+          currentUser={currentUser}
+          onSettings={() => setShowSettings(true)}
+          onLogout={handleLogout}
+        />
+
+        <div className="fm-main">
+          {/* Tabs are mounted once and hidden with CSS — no unmount/remount on tab switch */}
+          <div hidden={tab !== "dashboard"}>
+            <Dashboard inventoryCol={inventoryCol} servicesCol={servicesCol} visitsCol={visitsCol} patientsCol={patientsCol} transactionsCol={transactionsCol} summary={weekSummary} setTab={setTab} onSettings={() => setShowSettings(true)} currentUser={currentUser} onMutate={refreshAllAfterMutation} />
+          </div>
+          <div hidden={tab !== "inventory"}>
+            <InventoryWithRefresh inventoryCol={inventoryCol} restocksCol={restocksCol} currentUser={currentUser} onMutate={refreshAllAfterMutation} />
+          </div>
+          <div hidden={tab !== "finance"}>
+            <FinanceWithRefresh transactionsCol={transactionsCol} patientsCol={patientsCol} servicesCol={servicesCol} reconciliationsCol={reconciliationsCol} summary={weekSummary} currentUser={currentUser} onMutate={refreshAllAfterMutation} />
+          </div>
+          <div hidden={tab !== "visits"}>
+            <Visits visitsCol={visitsCol} patientsCol={patientsCol} inventoryCol={inventoryCol} servicesCol={servicesCol} onMutate={refreshAllAfterMutation} />
+          </div>
+          <div hidden={tab !== "patients"}>
+            <Patients patientsCol={patientsCol} />
+          </div>
+          <div hidden={tab !== "report"}>
+            <Report currentUser={currentUser} ready={ready} />
+          </div>
+
+          <BottomNav tab={tab} setTab={setTab} />
+        </div>
       </div>
+
+      {showSettings && (
+        <SettingsSheet
+          onClose={() => setShowSettings(false)}
+          currentUser={currentUser}
+          staffCol={staffCol}
+          locations={locationsCol.data}
+          onLocationsRefresh={locationsCol.refresh}
+          servicesCol={servicesCol}
+          inventoryCol={inventoryCol}
+          auditCol={auditCol}
+          onWipe={wipeAll}
+          onLogout={handleLogout}
+        />
+      )}
     </Shell>
   );
 }
