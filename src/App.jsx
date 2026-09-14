@@ -1430,7 +1430,7 @@ function AttendanceCard({ currentUser }) {
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 600 }}>
               {r.staff_name}
-              {r.is_late && !r.logout_at && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: RED, background: "#FEECEC", borderRadius: 5, padding: "1px 6px" }}>LATE</span>}
+              {r.is_late && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: RED, background: "#FEECEC", borderRadius: 5, padding: "1px 6px" }}>LATE</span>}
               {!r.logout_at && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: TEAL, background: "#E7F5F5", borderRadius: 5, padding: "1px 6px" }}>IN</span>}
             </div>
             <div style={{ fontSize: 11.5, color: FAINT }}>
