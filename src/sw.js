@@ -1,17 +1,18 @@
 // Service worker — injectManifest mode.
 // vite-plugin-pwa replaces self.__WB_MANIFEST with the actual precache list.
 
-const CACHE = "fm-v2";
+const CACHE = "fm-v3";
 const PRECACHE_URLS = (self.__WB_MANIFEST || []).map((e) => e.url);
 
-// Install: precache shell. Do NOT skipWaiting — the page controls activation.
+// Install: precache shell + skipWaiting so new SW always activates immediately.
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE).then((cache) => cache.addAll(PRECACHE_URLS))
   );
+  self.skipWaiting();
 });
 
-// Activate: delete every old cache, then claim open tabs.
+// Activate: delete every old cache version, then claim all open tabs.
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
@@ -23,7 +24,7 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-// Message: page sends SKIP_WAITING when it is safe to activate the new SW.
+// Message handler kept for compatibility.
 self.addEventListener("message", (event) => {
   if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
 });
@@ -61,7 +62,6 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       caches.open(CACHE).then(async (cache) => {
         const cached = await cache.match(request);
-        // Always revalidate in the background
         const fresh = fetch(request).then((res) => {
           if (res.ok) cache.put(request, res.clone());
           return res;
@@ -72,7 +72,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Everything else (icons, fonts, manifest.json) — network-first, cache fallback.
+  // Everything else (icons, fonts, manifest) — network-first, cache fallback.
   event.respondWith(
     fetch(request)
       .then((res) => {
