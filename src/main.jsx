@@ -17,53 +17,43 @@ ReactDOM.createRoot(document.getElementById("root")).render(
 if ("serviceWorker" in navigator && import.meta.env.PROD) {
   let reloading = false;
 
-  // Hard reload — used when the SW itself takes over (always safe to do).
   function forceReload() {
     if (reloading) return;
     reloading = true;
-    window.location.reload();
+    // Use location.replace so the reload bypasses the browser's back-cache.
+    window.location.replace(window.location.href.split("?")[0] + "?_r=" + Date.now());
   }
 
-  // Soft reload — only when no form field is focused and no modal is open.
-  function safeReload() {
-    if (reloading) return;
-    const el = document.activeElement;
-    if (el && el.matches("input,textarea,select,[contenteditable]")) return;
-    if (document.querySelector("[data-fm-modal]")) return;
-    reloading = true;
-    window.location.reload();
-  }
-
-  async function check(reg) {
-    try { await reg.update(); } catch {}
-
-    // If a new SW installed and is waiting, send SKIP_WAITING (belt-and-suspenders
-    // alongside skipWaiting() in the SW's own install handler).
-    if (reg.waiting && navigator.serviceWorker.controller) {
-      reg.waiting.postMessage({ type: "SKIP_WAITING" });
-    }
-
-    // Version-stamp check: if the server has a newer build, soft-reload.
+  async function checkVersion() {
     try {
       const res = await fetch("/version.json", { cache: "no-store" });
       if (res.ok) {
         const { build } = await res.json();
-        if (build !== __APP_BUILD__) safeReload();
+        if (build !== __APP_BUILD__) forceReload();
       }
     } catch {}
   }
 
+  async function checkSW(reg) {
+    try { await reg.update(); } catch {}
+    if (reg.waiting) {
+      reg.waiting.postMessage({ type: "SKIP_WAITING" });
+    }
+    await checkVersion();
+  }
+
+  // Check version immediately on load (before SW is ready).
+  checkVersion();
+
   navigator.serviceWorker.register("/sw.js").then((reg) => {
-    // When the SW takes control (after skipWaiting + clients.claim),
-    // always do a hard reload — the new SW is already serving new assets.
     navigator.serviceWorker.addEventListener("controllerchange", forceReload);
 
-    check(reg);
+    checkSW(reg);
 
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") check(reg);
+      if (document.visibilityState === "visible") checkSW(reg);
     });
 
-    setInterval(() => check(reg), 15 * 60 * 1000);
+    setInterval(() => checkSW(reg), 15 * 60 * 1000);
   });
 }
