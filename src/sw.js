@@ -1,7 +1,7 @@
 // Service worker — injectManifest mode.
 // vite-plugin-pwa replaces self.__WB_MANIFEST with the actual precache list.
 
-const CACHE = "fm-v3";
+const CACHE = "fm-v4";
 const PRECACHE_URLS = (self.__WB_MANIFEST || []).map((e) => e.url);
 
 // Install: precache shell + skipWaiting so new SW always activates immediately.
@@ -47,10 +47,10 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Navigations — network-first so a fresh index.html is fetched on each load.
+  // Navigations — always bypass HTTP cache so latest index.html is served.
   if (request.mode === "navigate") {
     event.respondWith(
-      fetch(request).catch(() =>
+      fetch(request, { cache: "no-store" }).catch(() =>
         caches.match("/index.html").then((r) => r || Response.error())
       )
     );
