@@ -26,7 +26,9 @@ if ("serviceWorker" in navigator && import.meta.env.PROD) {
 
   async function checkVersion() {
     try {
-      const res = await fetch("/version.json", { cache: "no-store" });
+      // Timestamp query param bypasses both browser HTTP cache AND any SW cache
+      // (SW caches key on the full URL; a fresh timestamp never matches a cached entry).
+      const res = await fetch("/version.json?_=" + Date.now(), { cache: "no-store" });
       if (res.ok) {
         const { build } = await res.json();
         if (build !== __APP_BUILD__) forceReload();
