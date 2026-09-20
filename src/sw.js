@@ -1,7 +1,7 @@
 // Service worker — injectManifest mode.
 // vite-plugin-pwa replaces self.__WB_MANIFEST with the actual precache list.
 
-const CACHE = "fm-v4";
+const CACHE = "fm-v5";
 const PRECACHE_URLS = (self.__WB_MANIFEST || []).map((e) => e.url);
 
 // Install: precache shell + skipWaiting so new SW always activates immediately.
@@ -41,9 +41,9 @@ self.addEventListener("fetch", (event) => {
   // API calls — never cache.
   if (url.pathname.startsWith("/api/")) return;
 
-  // version.json — always network-only so the page sees the latest build stamp.
-  if (url.pathname === "/version.json") {
-    event.respondWith(fetch(request));
+  // version.json (with or without ?_ timestamp) — always bypass SW and HTTP cache.
+  if (url.pathname === "/version.json" || url.searchParams.has("_")) {
+    event.respondWith(fetch(request, { cache: "no-store" }));
     return;
   }
 
