@@ -1648,6 +1648,7 @@ function Dashboard({ inventoryCol, servicesCol, visitsCol, patientsCol, transact
   const isAdmin = isAdminTier(currentUser.role);
   const canSeeDailyRevenue = isAdmin || currentUser.role === "Nurse";
   const [showLabReport, setShowLabReport] = useState(false);
+  const [showMedicalReport, setShowMedicalReport] = useState(false);
   const transactions = transactionsCol?.data || [];
   const todayTx = transactions.filter((t) => t.date === todayISO());
   const todayRevenue = todayTx.filter((t) => t.type === "revenue").reduce((s, t) => s + Number(t.amount), 0);
@@ -1660,6 +1661,7 @@ function Dashboard({ inventoryCol, servicesCol, visitsCol, patientsCol, transact
   return (
     <div style={{ padding: "0 16px calc(72px + env(safe-area-inset-bottom, 0px))" }}>
       {showLabReport && <LabReportSheet onClose={() => setShowLabReport(false)} />}
+      {showMedicalReport && <MedicalReportSheet onClose={() => setShowMedicalReport(false)} />}
       <TopBar title={`Good day, ${currentUser.name.split(" ")[0]}`} subtitle={`${currentUser.role} \u00b7 ${summary ? summary.label : ""}`} onSettings={onSettings} />
       <div style={{ display: "flex", gap: 10, marginTop: 8, marginBottom: 8 }}>
         {isAdmin
@@ -1693,12 +1695,8 @@ function Dashboard({ inventoryCol, servicesCol, visitsCol, patientsCol, transact
 
       <div style={{ fontSize: 14, fontWeight: 700, color: RED, marginBottom: 8 }}>Quick actions</div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-        <QuickAction icon={<Pill size={18} />} label="Add stock item" onClick={() => setTab("inventory")} tone="teal" />
-        <QuickAction icon={<Receipt size={18} />} label="Log transaction" onClick={() => setTab("finance")} tone="red" />
-        <QuickAction icon={<Banknote size={18} />} label="Cash reconciliation" onClick={() => setTab("finance")} tone="teal" />
-        <QuickAction icon={<Users size={18} />} label="New patient folder" onClick={() => setTab("patients")} tone="red" />
-        <QuickAction icon={<FileBarChart size={18} />} label="View report" onClick={() => setTab("report")} tone="ink" />
         <QuickAction icon={<FileText size={18} />} label="Lab report" onClick={() => { haptic(); setShowLabReport(true); }} tone="red" />
+        <QuickAction icon={<ScrollText size={18} />} label="Medical report" onClick={() => { haptic(); setShowMedicalReport(true); }} tone="teal" />
       </div>
     </div>
   );
@@ -2937,6 +2935,81 @@ function LabReportSheet({ onClose }) {
       <ErrorBanner message={error} />
       <PrimaryButton onClick={generate} disabled={busy}>
         <FileText size={16} /> {busy ? "Generating…" : "Generate PDF Report"}
+      </PrimaryButton>
+    </Sheet>
+  );
+}
+
+/* ----------------------------- Medical Report Sheet ----------------------------- */
+
+function MedicalReportSheet({ onClose }) {
+  const todayStr = () => {
+    const d = new Date();
+    return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+  };
+  const [patient, setPatient] = useState({ name: "", gender: "Female", age: "", mrn: "", regNo: "" });
+  const [dateStr, setDateStr] = useState(todayStr());
+  const [doctorName, setDoctorName] = useState("");
+  const [doctorTitle, setDoctorTitle] = useState("Medical Officer");
+  const [sections, setSections] = useState([
+    { heading: "History", text: "" },
+    { heading: "Examination Findings", text: "" },
+    { heading: "Diagnosis", text: "" },
+    { heading: "Treatment / Recommendation", text: "" },
+  ]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const updateSection = (i, text) => setSections((prev) => prev.map((s, idx) => idx === i ? { ...s, text } : s));
+
+  const generate = async () => {
+    setError("");
+    if (!patient.name.trim()) return setError("Patient name is required");
+    if (!doctorName.trim()) return setError("Doctor name is required");
+    if (sections.some((s) => !s.text.trim())) return setError("All sections must have content");
+    setBusy(true);
+    try {
+      const blob = await postForBlob("/api/documents/medical-report", { patient, dateStr, doctorName, doctorTitle, sections });
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (e) {
+      setError(e.message || "Failed to generate report");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Sheet title="Medical Report" onClose={onClose}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: MUTE, marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>Patient</div>
+      <Field label="Full name"><Input value={patient.name} onChange={(e) => setPatient({ ...patient, name: e.target.value })} placeholder="Patient name" /></Field>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <Field label="Gender">
+          <Select options={[{ value: "Female", label: "Female" }, { value: "Male", label: "Male" }]} value={patient.gender} onChange={(e) => setPatient({ ...patient, gender: e.target.value })} />
+        </Field>
+        <Field label="Age"><Input value={patient.age} onChange={(e) => setPatient({ ...patient, age: e.target.value })} placeholder="e.g. 34 years" /></Field>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <Field label="MRN"><Input value={patient.mrn} onChange={(e) => setPatient({ ...patient, mrn: e.target.value })} placeholder="Optional" /></Field>
+        <Field label="Reg No"><Input value={patient.regNo} onChange={(e) => setPatient({ ...patient, regNo: e.target.value })} placeholder="Optional" /></Field>
+      </div>
+      <Field label="Report date"><Input value={dateStr} onChange={(e) => setDateStr(e.target.value)} placeholder="DD/MM/YYYY" /></Field>
+
+      <div style={{ fontSize: 12, fontWeight: 600, color: MUTE, margin: "14px 0 10px", textTransform: "uppercase", letterSpacing: 0.5 }}>Clinical Content</div>
+      {sections.map((s, i) => (
+        <Field key={s.heading} label={s.heading}>
+          <TextArea value={s.text} onChange={(e) => updateSection(i, e.target.value)} placeholder={`Enter ${s.heading.toLowerCase()}…`} style={{ minHeight: 80 }} />
+        </Field>
+      ))}
+
+      <div style={{ fontSize: 12, fontWeight: 600, color: MUTE, margin: "14px 0 10px", textTransform: "uppercase", letterSpacing: 0.5 }}>Doctor</div>
+      <Field label="Name"><Input value={doctorName} onChange={(e) => setDoctorName(e.target.value)} placeholder="Dr. " /></Field>
+      <Field label="Title"><Input value={doctorTitle} onChange={(e) => setDoctorTitle(e.target.value)} placeholder="Medical Officer" /></Field>
+
+      <ErrorBanner message={error} />
+      <PrimaryButton onClick={generate} disabled={busy}>
+        <ScrollText size={16} /> {busy ? "Generating…" : "Generate PDF Report"}
       </PrimaryButton>
     </Sheet>
   );
