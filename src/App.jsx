@@ -296,7 +296,7 @@ function Shell({ children }) {
 
 function TopBar({ title, subtitle, onSettings }) {
   return (
-    <div className="fm-topbar" style={{ background: SURFACE, color: INK, padding: "16px 16px 20px", position: "relative" }}>
+    <div className="fm-topbar" style={{ background: SURFACE, color: INK, padding: "16px 16px 20px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <ClinigramWordmarkLight />
         {onSettings && (
@@ -1586,9 +1586,9 @@ function Dashboard({ inventoryCol, servicesCol, visitsCol, patientsCol, transact
   const [activeVisitId, setActiveVisitId] = useState(null);
 
   return (
-    <div style={{ padding: "0 16px 100px" }}>
+    <div style={{ padding: "0 16px calc(96px + env(safe-area-inset-bottom, 0px))" }}>
       <TopBar title={`Good day, ${currentUser.name.split(" ")[0]}`} subtitle={`${currentUser.role} \u00b7 ${summary ? summary.label : ""}`} onSettings={onSettings} />
-      <div style={{ display: "flex", gap: 10, marginTop: -14, marginBottom: 12 }}>
+      <div style={{ display: "flex", gap: 10, marginTop: 4, marginBottom: 12 }}>
         {isAdmin
           ? <Stat icon={<TrendingUp size={15} color={TEAL} />} color={TEAL} label="Revenue" value={fmtNaira(summary?.revenue)} sub="this week" />
           : canSeeDailyRevenue
@@ -1783,7 +1783,7 @@ function Inventory({ inventoryCol, restocksCol, currentUser }) {
   );
 
   return (
-    <div style={{ padding: "0 16px 100px" }}>
+    <div style={{ padding: "0 16px calc(96px + env(safe-area-inset-bottom, 0px))" }}>
       <TopBar title="Stock" subtitle={`${inventory.length} items tracked`} />
       <div style={{ marginTop: 16 }}>
         <div style={{ display: "flex", background: LINE, borderRadius: 12, padding: 3, marginBottom: 14, gap: 2 }}>
@@ -1985,9 +1985,9 @@ function Finance({ transactionsCol, patientsCol, servicesCol, reconciliationsCol
     : "Log consultation, procedure & other fees";
 
   return (
-    <div style={{ padding: "0 16px 100px" }}>
+    <div style={{ padding: "0 16px calc(96px + env(safe-area-inset-bottom, 0px))" }}>
       <TopBar title="Revenue & Expenditure" subtitle={topBarSubtitle} />
-      <div style={{ display: "flex", gap: 10, marginTop: -14, marginBottom: 14 }}>
+      <div style={{ display: "flex", gap: 10, marginTop: 4, marginBottom: 14 }}>
         {isAdmin
           ? <Stat icon={<TrendingUp size={15} color={TEAL} />} color={TEAL} label="Revenue (wk)" value={fmtNaira(summary?.revenue)} />
           : canSeeDailyRevenue
@@ -2106,7 +2106,7 @@ function Patients({ patientsCol }) {
   const removeIt = async (id) => { try { await remove(id); setSheet(null); } catch (e) { setError(e.message); } };
 
   return (
-    <div style={{ padding: "0 16px 100px" }}>
+    <div style={{ padding: "0 16px calc(96px + env(safe-area-inset-bottom, 0px))" }}>
       <TopBar title="Patient Folders" subtitle={`${patients.length} folders on record`} />
       <div style={{ marginTop: 16 }}>
         <SearchBar value={query} onChange={setQuery} placeholder="Search name or hospital number..." />
@@ -2551,7 +2551,7 @@ function Visits({ visitsCol, patientsCol, inventoryCol, servicesCol, onMutate })
   const filtered = visits.filter((v) => v.patient_name.toLowerCase().includes(query.toLowerCase()) || (v.hospital_number || "").toLowerCase().includes(query.toLowerCase()));
 
   return (
-    <div style={{ padding: "0 16px 100px" }}>
+    <div style={{ padding: "0 16px calc(96px + env(safe-area-inset-bottom, 0px))" }}>
       <TopBar title="Visits" subtitle={`${visits.filter((v) => v.status === "open").length} open visit(s)`} />
       <div style={{ marginTop: 16 }}>
         <SearchBar value={query} onChange={setQuery} placeholder="Search patient or hospital number..." />
@@ -2613,14 +2613,14 @@ function Report({ currentUser, ready }) {
 
   if (!summary) {
     return (
-      <div style={{ padding: "0 16px 100px" }}>
+      <div style={{ padding: "0 16px calc(96px + env(safe-area-inset-bottom, 0px))" }}>
         <TopBar title="Report" subtitle="Loading..." />
       </div>
     );
   }
 
   return (
-    <div style={{ padding: "0 16px 100px" }}>
+    <div style={{ padding: "0 16px calc(96px + env(safe-area-inset-bottom, 0px))" }}>
       <TopBar title="Report" subtitle={summary.label} />
       <div style={{ display: "flex", gap: 8, marginTop: 16, marginBottom: 10 }}>
         {["week", "month", "quarter"].map((p) => (
@@ -2689,6 +2689,15 @@ function Report({ currentUser, ready }) {
 export default function App() {
   const [tab, setTab] = useState("dashboard");
   const [showSettings, setShowSettings] = useState(false);
+
+  // Scroll each tab to top when switching so users never land mid-scroll
+  useEffect(() => {
+    const fm = document.querySelector(".fm-main");
+    if (!fm) return;
+    fm.querySelectorAll(":scope > div:not(.fm-bottom-nav)").forEach((el) => {
+      if (!el.hidden) el.scrollTop = 0;
+    });
+  }, [tab]);
   const [currentUser, setCurrentUser] = useState(null);
   const [checkingSession, setCheckingSession] = useState(true);
 
@@ -2799,6 +2808,9 @@ export default function App() {
           position: sticky; top: 0; z-index: 10;
           background: #f2f4f8;
           box-shadow: 0 1px 0 rgba(26,26,46,0.06), 0 4px 16px -8px rgba(26,26,46,0.10);
+          /* Break out of the screen's 16px horizontal padding so TopBar is full-width */
+          margin-left: -16px;
+          margin-right: -16px;
         }
 
         .fm-bottom-nav { display: block; }
