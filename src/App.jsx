@@ -565,14 +565,15 @@ const NAV_ITEMS = [
 function BottomNav({ tab, setTab }) {
   return (
     <div className="app-no-print fm-bottom-nav" style={{ position: "fixed", bottom: "calc(0.6rem + env(safe-area-inset-bottom, 0px) / 2)", left: "50%", transform: "translateX(-50%)", width: "calc(100% - 1.5rem)", maxWidth: 480, zIndex: 40 }}>
-      <nav style={{ background: SURFACE, borderRadius: 26, padding: "8px 12px", display: "flex", justifyContent: "space-around", alignItems: "flex-end", boxShadow: SHADOW_CARD, width: "100%" }}>
+      <nav style={{ background: SURFACE, borderRadius: 26, padding: "8px 12px", display: "flex", justifyContent: "space-around", alignItems: "flex-end", boxShadow: "6px 6px 15px #c7cedd, -6px -6px 15px #ffffff, 0 16px 40px -12px rgba(26,26,46,0.22)", width: "100%" }}>
       {NAV_ITEMS.map((it) => {
         const active = tab === it.id;
         const Icon = it.icon;
         return (
-          <button key={it.id} onClick={() => setTab(it.id)} style={{ background: "none", border: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, cursor: "pointer", color: active ? RED : FAINT, flex: 1, padding: "4px 0", fontFamily: "inherit" }}>
+          <button key={it.id} onClick={() => setTab(it.id)} style={{ background: "none", border: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, cursor: "pointer", color: active ? RED : FAINT, flex: 1, padding: "4px 0", fontFamily: "inherit", position: "relative" }}>
             <Icon size={21} strokeWidth={active ? 2.4 : 2} />
             <span style={{ fontSize: 10.5, fontWeight: active ? 700 : 500 }}>{it.label}</span>
+            {active && <span style={{ position: "absolute", bottom: -2, width: 5, height: 5, borderRadius: "50%", background: TEAL }} />}
           </button>
         );
       })}
@@ -1644,21 +1645,27 @@ function Dashboard({ inventoryCol, servicesCol, visitsCol, patientsCol, transact
 
       <div style={{ fontSize: 14, fontWeight: 700, color: RED, marginBottom: 8 }}>Quick actions</div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-        <QuickAction icon={<Pill size={18} color={TEAL} />} label="Add stock item" onClick={() => setTab("inventory")} />
-        <QuickAction icon={<Receipt size={18} color={RED} />} label="Log transaction" onClick={() => setTab("finance")} />
-        <QuickAction icon={<Banknote size={18} color={TEAL} />} label="Cash reconciliation" onClick={() => setTab("finance")} />
-        <QuickAction icon={<Users size={18} color={RED} />} label="New patient folder" onClick={() => setTab("patients")} />
-        <QuickAction icon={<FileBarChart size={18} color={TEAL} />} label="View report" onClick={() => setTab("report")} />
+        <QuickAction icon={<Pill size={18} />} label="Add stock item" onClick={() => setTab("inventory")} tone="teal" />
+        <QuickAction icon={<Receipt size={18} />} label="Log transaction" onClick={() => setTab("finance")} tone="red" />
+        <QuickAction icon={<Banknote size={18} />} label="Cash reconciliation" onClick={() => setTab("finance")} tone="teal" />
+        <QuickAction icon={<Users size={18} />} label="New patient folder" onClick={() => setTab("patients")} tone="red" />
+        <QuickAction icon={<FileBarChart size={18} />} label="View report" onClick={() => setTab("report")} tone="ink" />
       </div>
     </div>
   );
 }
 
-function QuickAction({ icon, label, onClick }) {
+function QuickAction({ icon, label, onClick, tone = "teal" }) {
+  const chipColors = {
+    teal: { bg: `${TEAL}1a`, color: TEAL },
+    red: { bg: `${RED}18`, color: RED },
+    ink: { bg: `${INK}12`, color: INK },
+  };
+  const chip = chipColors[tone] || chipColors.teal;
   return (
-    <button onClick={onClick} style={{ background: WHITE, border: `1px solid ${LINE}`, borderRadius: 14, padding: "14px 12px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer", textAlign: "left" }}>
-      <div style={{ width: 34, height: 34, borderRadius: 10, background: "#F6F7F8", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{icon}</div>
-      <span style={{ fontSize: 13, fontWeight: 600, color: INK }}>{label}</span>
+    <button className="neu-press" onClick={onClick} style={{ background: SURFACE, border: "none", borderRadius: 16, padding: "14px 12px", display: "flex", alignItems: "center", gap: 11, cursor: "pointer", textAlign: "left", boxShadow: SHADOW_SOFT, fontFamily: "inherit" }}>
+      <div style={{ width: 36, height: 36, borderRadius: 11, background: chip.bg, color: chip.color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{icon}</div>
+      <span style={{ fontSize: 13, fontWeight: 600, color: INK, lineHeight: 1.3 }}>{label}</span>
     </button>
   );
 }
@@ -2767,26 +2774,46 @@ export default function App() {
           #receipt-print-area { position: absolute; top: 0; left: 0; width: 100%; }
           .app-no-print { display: none !important; }
         }
-        /* Sidebar layout — desktop/tablet */
-        .fm-app-layout { display: flex; min-height: 100vh; min-height: 100dvh; }
+        /* ── App shell: nothing ever overflows the page ─────────────── */
+        .fm-app-layout { display: flex; height: 100dvh; overflow: hidden; }
         .fm-sidebar { display: none !important; }
-        /* Extra bottom padding so the floating pill nav never overlaps the last row */
-        .fm-main { flex: 1; min-width: 0; max-width: 560px; margin: 0 auto; position: relative; padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+
+        /* Main column: fixed height, stacks header + scroll area */
+        .fm-main {
+          flex: 1; min-width: 0;
+          display: flex; flex-direction: column;
+          height: 100dvh; overflow: hidden;
+          max-width: 560px; margin: 0 auto;
+        }
+
+        /* Each visible tab is its own independent scroll viewport */
+        .fm-main > div:not([hidden]):not(.fm-bottom-nav) {
+          flex: 1;
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior-y: contain;
+        }
+
+        /* Sticky header — pins to top of its scroll viewport */
+        .fm-topbar {
+          position: sticky; top: 0; z-index: 10;
+          background: #f2f4f8;
+          box-shadow: 0 1px 0 rgba(26,26,46,0.06), 0 4px 16px -8px rgba(26,26,46,0.10);
+        }
+
         .fm-bottom-nav { display: block; }
-        /* FAB: sits above the pill nav on phone */
+        /* FAB sits above the pill nav */
         .fm-fab { bottom: calc(88px + env(safe-area-inset-bottom, 0px)) !important; }
         /* Sheet: full-width drawer on phone */
         .fm-sheet { width: 100% !important; max-width: 100% !important; }
+
         @media (min-width: 768px) {
-          .fm-app-layout { align-items: flex-start; }
+          .fm-app-layout { align-items: stretch; }
           .fm-sidebar { display: flex !important; flex-direction: column !important; }
-          /* Desktop content: left-aligned after sidebar, comfortable horizontal padding */
-          .fm-main { max-width: none; width: 100%; margin: 0; padding-bottom: 32px; padding-left: 8px; }
+          .fm-main { max-width: none; width: 100%; margin: 0; padding-left: 8px; }
           .fm-bottom-nav { display: none !important; }
           .fm-topbar { display: none !important; }
-          /* FAB: no nav bar to clear on desktop */
           .fm-fab { bottom: 28px !important; right: 28px !important; }
-          /* Sheet: centred card on desktop, not full-width */
           .fm-sheet { max-width: 560px !important; margin: 0 auto !important; border-radius: 20px !important; }
         }
       `}</style>
