@@ -612,7 +612,7 @@ const NAV_ITEMS = [
 
 function BottomNav({ tab, setTab }) {
   return (
-    <div className="app-no-print fm-bottom-nav" style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 40, paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+    <div className="app-no-print fm-bottom-nav" style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 40, paddingLeft: "0.75rem", paddingRight: "0.75rem" }}>
       <nav style={{ background: SURFACE, borderRadius: 26, padding: "8px 12px 10px", display: "flex", justifyContent: "space-around", alignItems: "center", boxShadow: SHADOW_CARD + ", 0 16px 40px -12px rgba(26,26,46,0.22)", width: "100%" }}>
       {NAV_ITEMS.map((it) => {
         const active = tab === it.id;
@@ -2669,12 +2669,275 @@ function Visits({ visitsCol, patientsCol, inventoryCol, servicesCol, onMutate })
   );
 }
 
+/* ----------------------------- Lab Report Generator ----------------------------- */
+
+const FBC_PARAMS = [
+  { parameter: "WBC", unit: "10^3/UL", range: "4 - 11" },
+  { parameter: "Neutrophil %", unit: "%", range: "40 - 70" },
+  { parameter: "Lymphocyte %", unit: "%", range: "20 - 40" },
+  { parameter: "Monocyte %", unit: "%", range: "2 - 12" },
+  { parameter: "Eosinophil %", unit: "%", range: "0.0 - 5.0" },
+  { parameter: "Basophil %", unit: "%", range: "0.0 - 2.0" },
+  { parameter: "Neutrophil #", unit: "10^3/UL", range: "2.0 - 7.5" },
+  { parameter: "Lymphocyte #", unit: "10^3/UL", range: "1.0 - 4.5" },
+  { parameter: "Eosinophil #", unit: "10^3/UL", range: "0.04 - 0.40" },
+  { parameter: "Basophil #", unit: "10^3/UL", range: "0 - 0.1" },
+  { parameter: "Monocyte #", unit: "10^3/UL", range: "0.2 - 0.8" },
+  { parameter: "RBC", unit: "10^6/UL", range: "4.5 - 6.5" },
+  { parameter: "HGB", unit: "g/dl", range: "11.5 - 16.0" },
+  { parameter: "HCT", unit: "%", range: "37 - 47" },
+  { parameter: "MCV", unit: "FL", range: "78 - 100" },
+  { parameter: "MCH", unit: "Pg", range: "27.0 - 32.0" },
+  { parameter: "MCHC", unit: "g/dl", range: "31.0 - 37.0" },
+  { parameter: "RDW-CV", unit: "%", range: "11.0 - 16.0" },
+  { parameter: "RDW-SD", unit: "FL", range: "35.0 - 56.0" },
+  { parameter: "PLT", unit: "10^3/UL", range: "150 - 400" },
+  { parameter: "MPV", unit: "FL", range: "6.5 - 12.0" },
+  { parameter: "PDW", unit: "FL", range: "9.0 - 17.0" },
+  { parameter: "PCT", unit: "%", range: "0.108 - 0.282" },
+];
+
+const INVESTIGATION_PRESETS = {
+  "Finding": ["MP microscopy", "Serum PT (Pregnancy Test)", "Widal Test", "VDRL", "HIV Screening", "Hepatitis B Ag", "Other"],
+  "Table": ["FBC (Full Blood Count)", "Lipid Profile", "Liver Function Test", "Kidney Function Test", "Random Blood Sugar", "Fasting Blood Sugar", "Other"],
+  "Urine M/C/S": ["Urine M/C/S"],
+};
+
+function emptyTableRow() {
+  return { parameter: "", unit: "", result: "", range: "" };
+}
+
+function LabReportSheet({ onClose }) {
+  const [reportType, setReportType] = useState("Finding");
+  const [investigation, setInvestigation] = useState("");
+  const [customInvestigation, setCustomInvestigation] = useState("");
+  const [sample, setSample] = useState("BLOOD");
+  const [finding, setFinding] = useState("");
+  const [patient, setPatient] = useState({ name: "", gender: "Female", age: "", mrn: "", regNo: "", diagnosis: "" });
+  const [meta, setMeta] = useState({ regDate: todayISO(), reportDate: todayISO(), referredBy: "2020CH" });
+  const [rows, setRows] = useState(FBC_PARAMS.map((p) => ({ ...p, result: "" })));
+  const [urineMicro, setUrineMicro] = useState([
+    { description: "Epithelial cells", result: "0-1" },
+    { description: "Pus cells", result: "0-1" },
+    { description: "RBC", result: "Nil" },
+    { description: "Others", result: "Nil" },
+  ]);
+  const [urineColor, setUrineColor] = useState("Amber");
+  const [urineAppearance, setUrineAppearance] = useState("Clear");
+  const [urineCulture, setUrineCulture] = useState("Culture yielded no bacteria growth after incubation at 37°C for 24hrs.");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const resolvedInvestigation = investigation === "Other" ? customInvestigation : investigation;
+
+  const updateRow = (i, field, val) => {
+    setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, [field]: val } : r));
+  };
+  const addRow = () => setRows((prev) => [...prev, emptyTableRow()]);
+  const removeRow = (i) => setRows((prev) => prev.filter((_, idx) => idx !== i));
+
+  const updateMicroRow = (i, field, val) => {
+    setUrineMicro((prev) => prev.map((r, idx) => idx === i ? { ...r, [field]: val } : r));
+  };
+
+  const handleTypeChange = (t) => {
+    setReportType(t);
+    setInvestigation("");
+    if (t === "Table") setRows(FBC_PARAMS.map((p) => ({ ...p, result: "" })));
+    if (t === "Urine M/C/S") setInvestigation("Urine M/C/S");
+  };
+
+  const handleInvestigationChange = (v) => {
+    setInvestigation(v);
+    if (v === "FBC (Full Blood Count)") {
+      setRows(FBC_PARAMS.map((p) => ({ ...p, result: "" })));
+    } else if (v !== "Other") {
+      setRows([emptyTableRow()]);
+    }
+  };
+
+  const generate = async () => {
+    if (!patient.name.trim()) { setError("Patient name is required"); return; }
+    if (!resolvedInvestigation.trim()) { setError("Investigation name is required"); return; }
+    if (reportType === "Finding" && !finding.trim()) { setError("Finding / result is required"); return; }
+    if (reportType === "Table" && rows.every((r) => !r.result.trim())) { setError("Enter at least one result"); return; }
+    setError(""); setBusy(true);
+    try {
+      let body;
+      const fmtDate = (d) => {
+        const x = new Date(d);
+        return x.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" });
+      };
+      const patientPayload = { ...patient, age: patient.age || "—" };
+      const metaPayload = { ...meta, regDate: fmtDate(meta.regDate), reportDate: fmtDate(meta.reportDate) };
+
+      if (reportType === "Finding") {
+        body = { reportType: "finding", investigation: resolvedInvestigation, sample, finding, patient: patientPayload, meta: metaPayload };
+      } else if (reportType === "Urine M/C/S") {
+        body = {
+          reportType: "finding",
+          investigation: "Urine M/C/S",
+          sample: "URINE",
+          finding: [
+            `Colour: ${urineColor} · Appearance: ${urineAppearance}`,
+            ...urineMicro.map((r) => `${r.description}: ${r.result}`),
+            urineCulture,
+          ].join("\n"),
+          patient: patientPayload,
+          meta: metaPayload,
+        };
+      } else {
+        body = {
+          reportType: "table",
+          investigation: resolvedInvestigation,
+          sample,
+          rows: rows.filter((r) => r.parameter && r.result),
+          patient: patientPayload,
+          meta: metaPayload,
+        };
+      }
+
+      const blob = await postForBlob("/api/documents/lab-report", body);
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      haptic("medium");
+      onClose();
+    } catch (e) {
+      setError(e.message || "Failed to generate report");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const labelStyle = { fontSize: 12.5, fontWeight: 600, color: MUTE, marginBottom: 4, display: "block" };
+  const rowStyle = { display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1.5fr auto", gap: 6, alignItems: "center", marginBottom: 6 };
+
+  return (
+    <Sheet title="Lab Report Generator" onClose={onClose}>
+      {/* Report type tabs */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        {["Finding", "Table", "Urine M/C/S"].map((t) => (
+          <button key={t} onClick={() => handleTypeChange(t)} style={{ flex: 1, border: "none", borderRadius: 10, padding: "9px 4px", fontSize: 12, fontWeight: 700, cursor: "pointer", background: reportType === t ? RED : SURFACE, color: reportType === t ? WHITE : MUTE, boxShadow: reportType === t ? SHADOW_CTA : SHADOW_SOFT }}>
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {/* Investigation name */}
+      <Field label="Investigation">
+        <select value={investigation} onChange={(e) => handleInvestigationChange(e.target.value)} style={{ ...inputStyle }}>
+          <option value="">Select…</option>
+          {(INVESTIGATION_PRESETS[reportType] || []).map((v) => <option key={v} value={v}>{v}</option>)}
+        </select>
+        {investigation === "Other" && (
+          <Input style={{ marginTop: 6 }} value={customInvestigation} onChange={(e) => setCustomInvestigation(e.target.value)} placeholder="Type investigation name" />
+        )}
+      </Field>
+
+      {reportType !== "Urine M/C/S" && (
+        <Field label="Sample">
+          <select value={sample} onChange={(e) => setSample(e.target.value)} style={inputStyle}>
+            {["BLOOD", "SERUM", "URINE", "STOOL", "SPUTUM", "SWAB", "OTHER"].map((s) => <option key={s}>{s}</option>)}
+          </select>
+        </Field>
+      )}
+
+      {/* Patient info */}
+      <div style={{ background: SURFACE, borderRadius: 16, padding: "12px 14px", marginBottom: 12, boxShadow: SHADOW_SOFT }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: MUTE, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>Patient Info</div>
+        <Field label="Full Name"><Input value={patient.name} onChange={(e) => setPatient((p) => ({ ...p, name: e.target.value }))} placeholder="Patient name" /></Field>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <Field label="Gender">
+            <select value={patient.gender} onChange={(e) => setPatient((p) => ({ ...p, gender: e.target.value }))} style={inputStyle}>
+              {["Female", "Male"].map((g) => <option key={g}>{g}</option>)}
+            </select>
+          </Field>
+          <Field label="Age"><Input value={patient.age} onChange={(e) => setPatient((p) => ({ ...p, age: e.target.value }))} placeholder="e.g. 34 yrs" /></Field>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <Field label="MRN"><Input value={patient.mrn} onChange={(e) => setPatient((p) => ({ ...p, mrn: e.target.value }))} placeholder="(optional)" /></Field>
+          <Field label="Reg No"><Input value={patient.regNo} onChange={(e) => setPatient((p) => ({ ...p, regNo: e.target.value }))} placeholder="(optional)" /></Field>
+        </div>
+        <Field label="Diagnosis / Complaint"><Input value={patient.diagnosis} onChange={(e) => setPatient((p) => ({ ...p, diagnosis: e.target.value }))} placeholder="e.g. Fever, Routine" /></Field>
+      </div>
+
+      {/* Dates */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+        <Field label="Reg Date"><Input type="date" value={meta.regDate} onChange={(e) => setMeta((m) => ({ ...m, regDate: e.target.value }))} /></Field>
+        <Field label="Report Date"><Input type="date" value={meta.reportDate} onChange={(e) => setMeta((m) => ({ ...m, reportDate: e.target.value }))} /></Field>
+      </div>
+      <Field label="Referred By"><Input value={meta.referredBy} onChange={(e) => setMeta((m) => ({ ...m, referredBy: e.target.value }))} placeholder="e.g. 2020CH" /></Field>
+
+      {/* Finding */}
+      {reportType === "Finding" && (
+        <Field label="Finding / Result">
+          <TextArea value={finding} onChange={(e) => setFinding(e.target.value)} placeholder="e.g. Malaria Parasite: Trophozoites of Plasmodium falciparum + seen" style={{ minHeight: 80 }} />
+        </Field>
+      )}
+
+      {/* Urine M/C/S */}
+      {reportType === "Urine M/C/S" && (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+            <Field label="Colour"><Input value={urineColor} onChange={(e) => setUrineColor(e.target.value)} /></Field>
+            <Field label="Appearance"><Input value={urineAppearance} onChange={(e) => setUrineAppearance(e.target.value)} /></Field>
+          </div>
+          <div style={{ background: SURFACE, borderRadius: 14, padding: "10px 12px", marginBottom: 10, boxShadow: SHADOW_SOFT }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: MUTE, marginBottom: 8, textTransform: "uppercase" }}>Microscopy</div>
+            {urineMicro.map((r, i) => (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 6 }}>
+                <Input value={r.description} onChange={(e) => updateMicroRow(i, "description", e.target.value)} placeholder="Description" />
+                <Input value={r.result} onChange={(e) => updateMicroRow(i, "result", e.target.value)} placeholder="Result" />
+              </div>
+            ))}
+            <button onClick={() => setUrineMicro((p) => [...p, { description: "", result: "" }])} style={{ background: "none", border: `1.5px dashed ${LINE}`, borderRadius: 10, padding: "7px 14px", fontSize: 12.5, color: MUTE, cursor: "pointer", width: "100%", marginTop: 4 }}>+ Add row</button>
+          </div>
+          <Field label="Culture Result">
+            <TextArea value={urineCulture} onChange={(e) => setUrineCulture(e.target.value)} style={{ minHeight: 70 }} />
+          </Field>
+        </>
+      )}
+
+      {/* Table rows */}
+      {reportType === "Table" && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: MUTE, textTransform: "uppercase" }}>Parameters</span>
+            <button onClick={addRow} style={{ background: TEAL, color: WHITE, border: "none", borderRadius: 8, padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>+ Row</button>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "2fr 1.2fr 1fr 1.5fr auto", gap: 4, marginBottom: 4 }}>
+            {["Parameter", "Unit", "Result", "Ref Range", ""].map((h, i) => (
+              <span key={i} style={{ fontSize: 10.5, fontWeight: 700, color: FAINT, textAlign: i === 4 ? "center" : "left" }}>{h}</span>
+            ))}
+          </div>
+          {rows.map((r, i) => (
+            <div key={i} style={rowStyle}>
+              <Input value={r.parameter} onChange={(e) => updateRow(i, "parameter", e.target.value)} placeholder="e.g. WBC" />
+              <Input value={r.unit} onChange={(e) => updateRow(i, "unit", e.target.value)} placeholder="Unit" />
+              <Input value={r.result} onChange={(e) => updateRow(i, "result", e.target.value)} placeholder="Result" />
+              <Input value={r.range} onChange={(e) => updateRow(i, "range", e.target.value)} placeholder="4 - 11" />
+              <button onClick={() => removeRow(i)} style={{ background: "none", border: "none", color: RED, cursor: "pointer", padding: 4 }}><X size={14} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <ErrorBanner message={error} />
+      <PrimaryButton onClick={generate} disabled={busy}>
+        <FileText size={16} /> {busy ? "Generating…" : "Generate PDF Report"}
+      </PrimaryButton>
+    </Sheet>
+  );
+}
+
 /* ----------------------------- Report ----------------------------- */
 
 function Report({ currentUser, ready }) {
   const isAdmin = isAdminTier(currentUser.role);
   const [periodType, setPeriodType] = useState("week");
   const [offset, setOffset] = useState(0);
+  const [showLabReport, setShowLabReport] = useState(false);
   const { summary } = useSummary(periodType, offset, ready);
   const periodCount = periodType === "month" ? 12 : periodType === "quarter" ? 8 : 8;
   const options = Array.from({ length: periodCount }, (_, i) => i);
@@ -2688,15 +2951,38 @@ function Report({ currentUser, ready }) {
   if (!summary) {
     return (
       <div style={{ padding: "0 16px calc(72px + env(safe-area-inset-bottom, 0px))" }}>
+        {showLabReport && <LabReportSheet onClose={() => setShowLabReport(false)} />}
         <TopBar title="Report" subtitle="Loading..." />
+        <button onClick={() => { haptic(); setShowLabReport(true); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 14, background: SURFACE, border: "none", borderRadius: 20, padding: "14px 18px", cursor: "pointer", boxShadow: SHADOW_CARD, marginTop: 16, marginBottom: 16, textAlign: "left", fontFamily: "inherit" }}>
+          <span style={{ width: 48, height: 48, borderRadius: 15, background: `${RED}14`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: SHADOW_SOFT }}>
+            <FileText size={22} color={RED} />
+          </span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 14.5, fontWeight: 800, color: INK }}>Lab Report Generator</div>
+            <div style={{ fontSize: 12, color: MUTE, marginTop: 2 }}>FBC, MP, Urine M/C/S, Lipid Profile…</div>
+          </div>
+          <ChevronRight size={18} color={FAINT} />
+        </button>
       </div>
     );
   }
 
   return (
     <div style={{ padding: "0 16px calc(72px + env(safe-area-inset-bottom, 0px))" }}>
+      {showLabReport && <LabReportSheet onClose={() => setShowLabReport(false)} />}
       <TopBar title="Report" subtitle={summary.label} />
-      <div style={{ display: "flex", gap: 8, marginTop: 16, marginBottom: 10 }}>
+      {/* Lab Report Generator quick-access card */}
+      <button onClick={() => { haptic(); setShowLabReport(true); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 14, background: SURFACE, border: "none", borderRadius: 20, padding: "14px 18px", cursor: "pointer", boxShadow: SHADOW_CARD, marginTop: 16, marginBottom: 16, textAlign: "left", fontFamily: "inherit" }}>
+        <span style={{ width: 48, height: 48, borderRadius: 15, background: `${RED}14`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: SHADOW_SOFT }}>
+          <FileText size={22} color={RED} />
+        </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14.5, fontWeight: 800, color: INK, letterSpacing: "-0.01em" }}>Lab Report Generator</div>
+          <div style={{ fontSize: 12, color: MUTE, marginTop: 2 }}>FBC, MP, Urine M/C/S, Lipid Profile…</div>
+        </div>
+        <ChevronRight size={18} color={FAINT} />
+      </button>
+      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
         {["week", "month", "quarter"].map((p) => (
           <button key={p} onClick={() => { setPeriodType(p); setOffset(0); }} style={{ flex: 1, border: "none", borderRadius: 10, padding: "9px 0", fontSize: 12.5, fontWeight: 700, cursor: "pointer", background: periodType === p ? RED : "#F2F3F4", color: periodType === p ? WHITE : MUTE, textTransform: "capitalize" }}>{p}ly</button>
         ))}
