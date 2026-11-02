@@ -610,8 +610,8 @@ const NAV_ITEMS = [
 
 function BottomNav({ tab, setTab }) {
   return (
-    <div className="app-no-print fm-bottom-nav" style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 40, background: SURFACE, paddingLeft: "0.75rem", paddingRight: "0.75rem" }}>
-      <nav style={{ background: SURFACE, borderRadius: 26, padding: "8px 12px", paddingBottom: "calc(8px + env(safe-area-inset-bottom, 0px))", display: "flex", justifyContent: "space-around", alignItems: "flex-end", boxShadow: "6px 6px 15px #c7cedd, -6px -6px 15px #ffffff, 0 16px 40px -12px rgba(26,26,46,0.22)", width: "100%" }}>
+    <div className="app-no-print fm-bottom-nav" style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 40, paddingLeft: "0.75rem", paddingRight: "0.75rem" }}>
+      <nav style={{ background: SURFACE, borderRadius: 26, padding: "8px 12px", display: "flex", justifyContent: "space-around", alignItems: "flex-end", boxShadow: "6px 6px 15px #c7cedd, -6px -6px 15px #ffffff, 0 16px 40px -12px rgba(26,26,46,0.22)", width: "100%" }}>
       {NAV_ITEMS.map((it) => {
         const active = tab === it.id;
         const Icon = it.icon;
