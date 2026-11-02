@@ -2986,7 +2986,7 @@ function MedicalReportSheet({ onClose }) {
       <Field label="Full name"><Input value={patient.name} onChange={(e) => setPatient({ ...patient, name: e.target.value })} placeholder="Patient name" /></Field>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <Field label="Gender">
-          <Select options={[{ value: "Female", label: "Female" }, { value: "Male", label: "Male" }]} value={patient.gender} onChange={(e) => setPatient({ ...patient, gender: e.target.value })} />
+          <Select options={["Female", "Male"]} value={patient.gender} onChange={(e) => setPatient({ ...patient, gender: e.target.value })} />
         </Field>
         <Field label="Age"><Input value={patient.age} onChange={(e) => setPatient({ ...patient, age: e.target.value })} placeholder="e.g. 34 years" /></Field>
       </div>
