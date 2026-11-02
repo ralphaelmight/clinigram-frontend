@@ -1,0 +1,87 @@
+/* Clinigram Facility Manager — global styles
+   Ported from the telemedicine frontend design system (clinigram-telemedicine-frontend/src/index.css).
+   Visual design only — no auth, routes, or data shared between apps. */
+
+/* ── Base ──────────────────────────────────────────────────────────────── */
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: 'Poppins', system-ui, sans-serif;
+  background: #f2f4f8;
+  color: #1a1a2e;
+}
+
+/* ── Native-app touch behaviour ────────────────────────────────────────── */
+/* Strip the tell-tale "web page in a browser" feel:
+   - no grey/blue tap-flash
+   - no rubber-band overscroll / pull-to-refresh
+   - no double-tap-to-zoom lag
+   - no iOS text auto-inflation */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+html,
+body {
+  overscroll-behavior-y: none;
+}
+body {
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  overflow-x: hidden;
+}
+/* Let inputs use native touch so the iOS keyboard/caret works properly */
+input,
+textarea,
+select {
+  touch-action: auto;
+  -webkit-user-select: text;
+  user-select: text;
+}
+/* iOS auto-zooms when a focused input has font-size < 16px — prevent it */
+@media (max-width: 640px) {
+  input:not([type='checkbox']):not([type='radio']),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* ── Neumorphic helpers ─────────────────────────────────────────────────── */
+/* Raised control sinks in on tap, springs back on release */
+.neu-press {
+  transition: box-shadow 0.18s ease, transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.neu-press:active {
+  box-shadow: inset 4px 4px 8px #c9d0de, inset -4px -4px 8px #ffffff !important;
+  transform: scale(0.97);
+}
+
+/* ── Scrollbars ─────────────────────────────────────────────────────────── */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ── Print: hide chrome ─────────────────────────────────────────────────── */
+@media print {
+  .app-no-print { display: none !important; }
+}
+
+/* ── Slide-up sheet animation ───────────────────────────────────────────── */
+@keyframes slideUp {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+/* ── Reduced motion ─────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -20,8 +20,9 @@ const TEAL_ALT   = "#42b4b8";   // brand-teal-alt (gradient end)
 const WHITE      = "#ffffff";
 const BRAND_DARK = "#17181a";
 const INK        = "#1a1a2e";   // primary text
-const SURFACE    = "#f8f9fa";   // page background
-const SUBTLE     = "#f0f2f5";   // hover fills, dividers, chips
+// Telemed-matched surface: warm off-white that makes neumorphic shadows visible
+const SURFACE    = "#f2f4f8";   // page background
+const SUBTLE     = "#f5f7fa";   // hover fills, dividers, chips
 const MUTE       = "#6b7280";   // gray-500
 const FAINT      = "#9ca3af";   // gray-400
 const LINE       = "#e5e7eb";   // gray-200
@@ -29,11 +30,13 @@ const LINE       = "#e5e7eb";   // gray-200
 // aliases kept for backward compat with existing code
 const BG   = SURFACE;
 
-// Shadows
-const SHADOW_CARD = "0 8px 24px -8px rgba(26,26,46,0.12)";
-const SHADOW_SOFT = "0 4px 16px -6px rgba(26,26,46,0.10)";
-const SHADOW_CTA  = "0 10px 24px -8px rgba(233,50,35,0.45)";
-const SHADOW_TEAL = "0 10px 24px -8px rgba(66,180,184,0.40)";
+// Neumorphic shadows — matched to telemed design tokens
+// Two-shadow technique: dark down-right + white highlight up-left
+const SHADOW_CARD  = "6px 6px 15px #c7cedd, -6px -6px 15px #ffffff";
+const SHADOW_SOFT  = "4px 4px 10px #c9d0de, -4px -4px 10px #ffffff";
+const SHADOW_INSET = "inset 4px 4px 8px #c9d0de, inset -4px -4px 8px #ffffff";
+const SHADOW_CTA   = "6px 8px 18px -4px rgba(233,50,35,0.42), -4px -4px 10px #ffffff";
+const SHADOW_TEAL  = "0 10px 24px -8px rgba(66,180,184,0.40)";
 
 const REVENUE_CATEGORIES = ["Consultation", "Folder Opening", "Procedure", "Investigation", "Admission", "Pharmacy Sale", "Other"];
 const EXPENSE_CATEGORIES = ["Salaries", "Utilities", "Supplies Purchase", "Equipment", "Maintenance", "Other"];
@@ -169,6 +172,19 @@ function ClinigramWordmark() {
   );
 }
 
+// Light-mode wordmark for surface-color headers
+function ClinigramWordmarkLight() {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+      <ClinigramMark size={28} />
+      <div>
+        <div style={{ fontSize: 15.5, fontWeight: 800, color: RED, lineHeight: 1.1 }}>Clinigram</div>
+        <div style={{ fontSize: 9.5, letterSpacing: 1.2, color: MUTE, fontWeight: 700, textTransform: "uppercase" }}>Facility Manager</div>
+      </div>
+    </div>
+  );
+}
+
 /* ─────────────────────── responsive helpers ──────────────────────────── */
 
 function useIsDesktop() {
@@ -280,24 +296,24 @@ function Shell({ children }) {
 
 function TopBar({ title, subtitle, onSettings }) {
   return (
-    <div className="fm-topbar" style={{ background: `linear-gradient(135deg, ${RED} 0%, #c4281c 100%)`, color: WHITE, padding: "16px 16px 24px", borderRadius: "0 0 24px 24px", position: "relative", boxShadow: SHADOW_CTA }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <ClinigramWordmark />
+    <div className="fm-topbar" style={{ background: SURFACE, color: INK, padding: "16px 16px 20px", position: "relative" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <ClinigramWordmarkLight />
         {onSettings && (
-          <button onClick={onSettings} style={{ background: "rgba(255,255,255,0.18)", border: "none", borderRadius: 12, padding: 8, cursor: "pointer" }}>
-            <Settings size={17} color={WHITE} />
+          <button onClick={onSettings} style={{ background: SURFACE, border: "none", borderRadius: 12, padding: 8, cursor: "pointer", boxShadow: SHADOW_SOFT }}>
+            <Settings size={17} color={MUTE} />
           </button>
         )}
       </div>
-      <div style={{ fontSize: 20, fontWeight: 700, marginTop: 16, letterSpacing: "-0.015em" }}>{title}</div>
-      {subtitle && <div style={{ fontSize: 12.5, opacity: 0.88, marginTop: 3 }}>{subtitle}</div>}
+      {title && <div style={{ fontSize: 22, fontWeight: 800, marginTop: 14, letterSpacing: "-0.02em", color: INK }}>{title}</div>}
+      {subtitle && <div style={{ fontSize: 12.5, color: MUTE, marginTop: 3 }}>{subtitle}</div>}
     </div>
   );
 }
 
 function Card({ children, style, ...rest }) {
   return (
-    <div {...rest} style={{ background: WHITE, borderRadius: 16, padding: 20, border: "1px solid rgba(0,0,0,0.04)", boxShadow: SHADOW_CARD, ...style }}>
+    <div {...rest} style={{ background: SURFACE, borderRadius: 24, padding: 20, boxShadow: SHADOW_CARD, ...style }}>
       {children}
     </div>
   );
@@ -358,7 +374,7 @@ function Sheet({ title, onClose, children, onBack }) {
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: WHITE, width: "100%", maxHeight: "88vh", overflowY: "auto",
+          background: SURFACE, width: "100%", maxHeight: "88vh", overflowY: "auto",
           borderRadius: "24px 24px 0 0", padding: "16px 20px 32px",
           animation: "slideUp 0.22s ease-out", boxShadow: "0 -8px 32px rgba(26,26,46,0.12)",
         }}
@@ -393,8 +409,10 @@ function Field({ label, children, style }) {
 }
 
 const inputStyle = {
-  width: "100%", padding: "11px 12px", borderRadius: 12, border: `1px solid ${LINE}`,
-  fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: "inherit", background: WHITE, color: INK,
+  width: "100%", padding: "11px 12px", borderRadius: 12, border: "2px solid transparent",
+  fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: "inherit",
+  background: SURFACE, color: INK,
+  boxShadow: SHADOW_INSET,
   transition: "border-color 0.15s, box-shadow 0.15s",
 };
 
@@ -510,7 +528,14 @@ function LockedRow({ label }) {
 
 function RoleBadge({ role }) {
   const admin = isAdminTier(role);
-  return <span style={{ fontSize: 10.5, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: admin ? `${RED}18` : `${TEAL}22`, color: admin ? RED : TEAL }}>{role}</span>;
+  return (
+    <span style={{
+      fontSize: 10.5, fontWeight: 700, padding: "3px 10px", borderRadius: 999,
+      background: admin ? "rgba(233,50,35,0.10)" : "rgba(93,178,182,0.14)",
+      color: admin ? RED : TEAL,
+      letterSpacing: "0.01em",
+    }}>{role}</span>
+  );
 }
 
 function Avatar({ name, role, size = 38 }) {
@@ -537,19 +562,19 @@ const NAV_ITEMS = [
 
 function BottomNav({ tab, setTab }) {
   return (
-    <div className="app-no-print fm-bottom-nav" style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: WHITE, borderTop: `1px solid ${LINE}`, display: "flex", justifyContent: "space-around", padding: "8px 4px 0", zIndex: 40 }}>
+    <div className="app-no-print fm-bottom-nav" style={{ position: "fixed", bottom: "calc(0.6rem + env(safe-area-inset-bottom, 0px) / 2)", left: "50%", transform: "translateX(-50%)", width: "calc(100% - 1.5rem)", maxWidth: 480, zIndex: 40 }}>
+      <nav style={{ background: SURFACE, borderRadius: 26, padding: "8px 12px", display: "flex", justifyContent: "space-around", alignItems: "flex-end", boxShadow: SHADOW_CARD }}>
       {NAV_ITEMS.map((it) => {
         const active = tab === it.id;
         const Icon = it.icon;
         return (
-          <button key={it.id} onClick={() => setTab(it.id)} style={{ background: "none", border: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, cursor: "pointer", color: active ? RED : FAINT, flex: 1, padding: "2px 0" }}>
-            <div style={{ padding: "4px 14px", borderRadius: 16, background: active ? `${RED}14` : "transparent", transition: "background 0.15s" }}>
-              <Icon size={21} strokeWidth={active ? 2.4 : 2} />
-            </div>
+          <button key={it.id} onClick={() => setTab(it.id)} style={{ background: "none", border: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, cursor: "pointer", color: active ? RED : FAINT, flex: 1, padding: "4px 0", fontFamily: "inherit" }}>
+            <Icon size={21} strokeWidth={active ? 2.4 : 2} />
             <span style={{ fontSize: 10.5, fontWeight: active ? 700 : 500 }}>{it.label}</span>
           </button>
         );
       })}
+      </nav>
     </div>
   );
 }
@@ -559,9 +584,9 @@ function BottomNav({ tab, setTab }) {
 function Sidebar({ tab, setTab, currentUser, onSettings, onLogout }) {
   return (
     <aside className="app-no-print fm-sidebar" style={{
-      width: 256, flexShrink: 0, background: WHITE, height: "100dvh", position: "sticky", top: 0,
-      borderRight: `1px solid ${SUBTLE}`, flexDirection: "column", zIndex: 40,
-      boxShadow: SHADOW_SOFT,
+      width: 256, flexShrink: 0, background: SURFACE, height: "100dvh", position: "sticky", top: 0,
+      flexDirection: "column", zIndex: 40,
+      boxShadow: SHADOW_CARD,
     }}>
       {/* Brand lockup */}
       <div style={{ padding: "22px 20px 16px", borderBottom: `1px solid ${SUBTLE}` }}>
