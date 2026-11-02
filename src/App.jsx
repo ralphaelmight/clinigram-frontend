@@ -1647,6 +1647,7 @@ function AttendanceCard({ currentUser }) {
 function Dashboard({ inventoryCol, servicesCol, visitsCol, patientsCol, transactionsCol, summary, setTab, onSettings, currentUser, onMutate }) {
   const isAdmin = isAdminTier(currentUser.role);
   const canSeeDailyRevenue = isAdmin || currentUser.role === "Nurse";
+  const [showLabReport, setShowLabReport] = useState(false);
   const transactions = transactionsCol?.data || [];
   const todayTx = transactions.filter((t) => t.date === todayISO());
   const todayRevenue = todayTx.filter((t) => t.type === "revenue").reduce((s, t) => s + Number(t.amount), 0);
@@ -1658,6 +1659,7 @@ function Dashboard({ inventoryCol, servicesCol, visitsCol, patientsCol, transact
 
   return (
     <div style={{ padding: "0 16px calc(72px + env(safe-area-inset-bottom, 0px))" }}>
+      {showLabReport && <LabReportSheet onClose={() => setShowLabReport(false)} />}
       <TopBar title={`Good day, ${currentUser.name.split(" ")[0]}`} subtitle={`${currentUser.role} \u00b7 ${summary ? summary.label : ""}`} onSettings={onSettings} />
       <div style={{ display: "flex", gap: 10, marginTop: 8, marginBottom: 8 }}>
         {isAdmin
@@ -1696,6 +1698,7 @@ function Dashboard({ inventoryCol, servicesCol, visitsCol, patientsCol, transact
         <QuickAction icon={<Banknote size={18} />} label="Cash reconciliation" onClick={() => setTab("finance")} tone="teal" />
         <QuickAction icon={<Users size={18} />} label="New patient folder" onClick={() => setTab("patients")} tone="red" />
         <QuickAction icon={<FileBarChart size={18} />} label="View report" onClick={() => setTab("report")} tone="ink" />
+        <QuickAction icon={<FileText size={18} />} label="Lab report" onClick={() => { haptic(); setShowLabReport(true); }} tone="red" />
       </div>
     </div>
   );
@@ -2937,7 +2940,6 @@ function Report({ currentUser, ready }) {
   const isAdmin = isAdminTier(currentUser.role);
   const [periodType, setPeriodType] = useState("week");
   const [offset, setOffset] = useState(0);
-  const [showLabReport, setShowLabReport] = useState(false);
   const { summary } = useSummary(periodType, offset, ready);
   const periodCount = periodType === "month" ? 12 : periodType === "quarter" ? 8 : 8;
   const options = Array.from({ length: periodCount }, (_, i) => i);
@@ -2951,37 +2953,14 @@ function Report({ currentUser, ready }) {
   if (!summary) {
     return (
       <div style={{ padding: "0 16px calc(72px + env(safe-area-inset-bottom, 0px))" }}>
-        {showLabReport && <LabReportSheet onClose={() => setShowLabReport(false)} />}
         <TopBar title="Report" subtitle="Loading..." />
-        <button onClick={() => { haptic(); setShowLabReport(true); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 14, background: SURFACE, border: "none", borderRadius: 20, padding: "14px 18px", cursor: "pointer", boxShadow: SHADOW_CARD, marginTop: 16, marginBottom: 16, textAlign: "left", fontFamily: "inherit" }}>
-          <span style={{ width: 48, height: 48, borderRadius: 15, background: `${RED}14`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: SHADOW_SOFT }}>
-            <FileText size={22} color={RED} />
-          </span>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14.5, fontWeight: 800, color: INK }}>Lab Report Generator</div>
-            <div style={{ fontSize: 12, color: MUTE, marginTop: 2 }}>FBC, MP, Urine M/C/S, Lipid Profile…</div>
-          </div>
-          <ChevronRight size={18} color={FAINT} />
-        </button>
       </div>
     );
   }
 
   return (
     <div style={{ padding: "0 16px calc(72px + env(safe-area-inset-bottom, 0px))" }}>
-      {showLabReport && <LabReportSheet onClose={() => setShowLabReport(false)} />}
       <TopBar title="Report" subtitle={summary.label} />
-      {/* Lab Report Generator quick-access card */}
-      <button onClick={() => { haptic(); setShowLabReport(true); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 14, background: SURFACE, border: "none", borderRadius: 20, padding: "14px 18px", cursor: "pointer", boxShadow: SHADOW_CARD, marginTop: 16, marginBottom: 16, textAlign: "left", fontFamily: "inherit" }}>
-        <span style={{ width: 48, height: 48, borderRadius: 15, background: `${RED}14`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: SHADOW_SOFT }}>
-          <FileText size={22} color={RED} />
-        </span>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14.5, fontWeight: 800, color: INK, letterSpacing: "-0.01em" }}>Lab Report Generator</div>
-          <div style={{ fontSize: 12, color: MUTE, marginTop: 2 }}>FBC, MP, Urine M/C/S, Lipid Profile…</div>
-        </div>
-        <ChevronRight size={18} color={FAINT} />
-      </button>
       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
         {["week", "month", "quarter"].map((p) => (
           <button key={p} onClick={() => { setPeriodType(p); setOffset(0); }} style={{ flex: 1, border: "none", borderRadius: 10, padding: "9px 0", fontSize: 12.5, fontWeight: 700, cursor: "pointer", background: periodType === p ? RED : "#F2F3F4", color: periodType === p ? WHITE : MUTE, textTransform: "capitalize" }}>{p}ly</button>
