@@ -7,6 +7,27 @@ import "@fontsource/poppins/latin-800.css";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App.jsx";
+import { applyA11y } from "./utils/a11y.js";
+
+// Apply saved accessibility prefs before first paint (no flash of unstyled content).
+applyA11y();
+
+// Block pinch-to-zoom everywhere — iOS Safari ignores viewport user-scalable=no,
+// so we cancel the native gesture in JS to get true app-like behaviour.
+["gesturestart", "gesturechange", "gestureend"].forEach((evt) =>
+  document.addEventListener(evt, (e) => e.preventDefault(), { passive: false })
+);
+
+// Capture the PWA install prompt as early as possible (Chrome/Android fires it
+// before React mounts).
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  window.__cgInstallPrompt = e;
+});
+window.addEventListener("appinstalled", () => {
+  window.__cgInstallPrompt = null;
+  window.__cgInstalled = true;
+});
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>

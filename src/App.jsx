@@ -7,9 +7,18 @@ import {
   ScrollText, Eraser, KeyRound, ArrowLeft, UserPlus, LogOut,
   UserCog, Power, RotateCcw, History,
   FileText, Activity, CalendarClock, PackagePlus, Printer,
-  Banknote, Link2, AlertOctagon, Tag, WifiOff
+  Banknote, Link2, AlertOctagon, Tag, WifiOff, ArrowDownToLine,
+  Type, Contrast, LayoutList
 } from "lucide-react";
 import { api, getToken, setToken, postForBlob } from "./api";
+import { getA11y, setA11y, applyA11y } from "./utils/a11y.js";
+import { haptic } from "./lib/haptics";
+import { useEdgeSwipeGuard } from "./hooks/useEdgeSwipeGuard";
+import { useThemeColor } from "./hooks/useThemeColor";
+import { usePullToRefresh } from "./hooks/usePullToRefresh";
+import AppSplash from "./components/AppSplash";
+import InstallBanner from "./components/InstallBanner";
+import PullToRefresh from "./components/PullToRefresh";
 
 /* ----------------------------- brand tokens ----------------------------- */
 
@@ -319,6 +328,32 @@ function Card({ children, style, ...rest }) {
   );
 }
 
+function SkeletonCard({ rows = 2, style }) {
+  const shimmer = {
+    background: "linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%)",
+    backgroundSize: "200% 100%",
+    animation: "shimmer 1.5s infinite",
+    borderRadius: 8,
+  };
+  return (
+    <Card style={style}>
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} style={{ ...shimmer, height: 14, marginBottom: i < rows - 1 ? 10 : 0, width: i === rows - 1 ? "60%" : "100%" }} />
+      ))}
+    </Card>
+  );
+}
+
+function SkeletonList({ count = 3 }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {Array.from({ length: count }).map((_, i) => (
+        <SkeletonCard key={i} rows={2} />
+      ))}
+    </div>
+  );
+}
+
 function Stat({ icon, label, value, color, sub }) {
   return (
     <Card style={{ flex: 1, minWidth: 0 }}>
@@ -353,7 +388,7 @@ function LockedStat({ label, icon, color }) {
 function FAB({ onClick, label = "Add" }) {
   return (
     <button
-      onClick={onClick}
+      onClick={() => { haptic('medium'); onClick?.(); }}
       className="fm-fab"
       style={{
         position: "fixed", bottom: 88, right: 18, zIndex: 30,
@@ -371,14 +406,22 @@ function FAB({ onClick, label = "Add" }) {
 
 function Sheet({ title, onClose, children, onBack }) {
   return (
-    <div data-fm-modal className="app-no-print" style={{ position: "fixed", inset: 0, background: "rgba(26,26,46,0.45)", zIndex: 50, display: "flex", alignItems: "flex-end" }} onClick={onClose}>
+    <div
+      data-fm-modal
+      className="app-no-print"
+      style={{ position: "fixed", inset: 0, background: "rgba(26,26,46,0.45)", zIndex: 50, display: "flex", alignItems: "flex-end" }}
+      onClick={onClose}
+      onTouchMove={(e) => e.stopPropagation()}
+    >
       <div
         className="fm-sheet"
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: SURFACE, width: "100%", maxHeight: "88vh", overflowY: "auto",
+          background: SURFACE, width: "100%", maxHeight: "88vh",
+          overflowY: "auto", overflowX: "hidden",
           borderRadius: "24px 24px 0 0", padding: "16px 20px 32px",
           animation: "slideUp 0.22s ease-out", boxShadow: "0 -8px 32px rgba(26,26,46,0.12)",
+          overscrollBehaviorY: "contain",
         }}
       >
         <div style={{ width: 36, height: 4, background: SUBTLE, borderRadius: 4, margin: "0 auto 16px" }} />
@@ -460,7 +503,7 @@ function PrimaryButton({ children, onClick, disabled, color, teal }) {
   // `color` prop kept for backward compat but gradient takes precedence when not disabled
   return (
     <button
-      onClick={onClick}
+      onClick={disabled ? undefined : (e) => { haptic('medium'); onClick?.(e); }}
       disabled={disabled}
       style={{
         width: "100%", background: bg, color: WHITE, border: "none",
@@ -570,7 +613,7 @@ function BottomNav({ tab, setTab }) {
         const active = tab === it.id;
         const Icon = it.icon;
         return (
-          <button key={it.id} onClick={() => setTab(it.id)} style={{ background: "none", border: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, cursor: "pointer", color: active ? RED : FAINT, flex: 1, padding: "4px 0", fontFamily: "inherit", position: "relative" }}>
+          <button key={it.id} onClick={() => { haptic(); setTab(it.id); }} style={{ background: "none", border: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, cursor: "pointer", color: active ? RED : FAINT, flex: 1, padding: "4px 0", fontFamily: "inherit", position: "relative" }}>
             <Icon size={21} strokeWidth={active ? 2.4 : 2} />
             <span style={{ fontSize: 10.5, fontWeight: active ? 700 : 500 }}>{it.label}</span>
             {active && <span style={{ position: "absolute", bottom: -2, width: 5, height: 5, borderRadius: "50%", background: TEAL }} />}
@@ -1323,8 +1366,16 @@ function SettingsSheet({ onClose, currentUser, staffCol, locations, onLocationsR
   const [geoForm, setGeoForm] = useState({ lat: "", lng: "", radius_meters: "300", shift_start_time: "08:00" });
   const [geoError, setGeoError] = useState("");
   const [geoBusy, setGeoBusy] = useState(false);
+  const [a11y, setA11yState] = useState(() => getA11y());
 
   const isAdmin = isAdminTier(currentUser.role);
+
+  const toggleA11y = (key) => {
+    const next = { ...a11y, [key]: !a11y[key] };
+    setA11yState(next);
+    setA11y(next);
+    applyA11y(next);
+  };
 
   const exportData = async () => {
     setExporting(true);
@@ -1512,18 +1563,29 @@ function SettingsSheet({ onClose, currentUser, staffCol, locations, onLocationsR
       {isAdmin && <SettingsRow icon={<ScrollText size={16} color={RED} />} label="Audit log" onClick={() => setView("audit")} />}
       {isAdmin && <SettingsRow icon={<Download size={16} color={TEAL} />} label={exporting ? "Exporting..." : "Export all data (.json)"} onClick={exportData} />}
       {isAdmin && <SettingsRow icon={<Eraser size={16} color={RED} />} label="Erase all data" onClick={() => setView("wipe")} danger />}
+      <div style={{ margin: "14px 0 4px", fontSize: 11, fontWeight: 700, color: MUTE, letterSpacing: "0.06em", textTransform: "uppercase" }}>Accessibility</div>
+      <SettingsRow icon={<Type size={16} color={TEAL} />} label="Smaller text" right={
+        <div onClick={() => toggleA11y("smallText")} style={{ width: 40, height: 22, borderRadius: 11, background: a11y.smallText ? TEAL : "#d1d5db", display: "flex", alignItems: "center", padding: "0 2px", cursor: "pointer", transition: "background 0.2s" }}>
+          <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,0.2)", transform: a11y.smallText ? "translateX(18px)" : "translateX(0)", transition: "transform 0.2s" }} />
+        </div>
+      } onClick={() => toggleA11y("smallText")} />
+      <SettingsRow icon={<Contrast size={16} color={TEAL} />} label="High contrast" right={
+        <div onClick={() => toggleA11y("highContrast")} style={{ width: 40, height: 22, borderRadius: 11, background: a11y.highContrast ? TEAL : "#d1d5db", display: "flex", alignItems: "center", padding: "0 2px", cursor: "pointer", transition: "background 0.2s" }}>
+          <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,0.2)", transform: a11y.highContrast ? "translateX(18px)" : "translateX(0)", transition: "transform 0.2s" }} />
+        </div>
+      } onClick={() => toggleA11y("highContrast")} />
       <SettingsRow icon={<LogOut size={16} color={MUTE} />} label="Switch user / sign out" onClick={onLogout} />
       <div style={{ fontSize: 11, color: FAINT, marginTop: 14, textAlign: "center" }}>Connected to your facility's online server.</div>
     </Sheet>
   );
 }
 
-function SettingsRow({ icon, label, onClick, danger }) {
+function SettingsRow({ icon, label, onClick, danger, right }) {
   return (
     <button onClick={onClick} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, background: WHITE, border: `1px solid ${LINE}`, borderRadius: 12, padding: "13px 14px", marginBottom: 9, cursor: "pointer" }}>
       <div style={{ width: 30, height: 30, borderRadius: 9, background: "#F6F7F8", display: "flex", alignItems: "center", justifyContent: "center" }}>{icon}</div>
       <span style={{ fontSize: 14, fontWeight: 600, color: danger ? RED : INK, flex: 1, textAlign: "left" }}>{label}</span>
-      <ChevronRight size={16} color={FAINT} />
+      {right || <ChevronRight size={16} color={FAINT} />}
     </button>
   );
 }
@@ -2698,6 +2760,10 @@ export default function App() {
       if (!el.hidden) el.scrollTop = 0;
     });
   }, [tab]);
+
+  // Native-app feel hooks
+  useEdgeSwipeGuard();
+  useThemeColor("#f2f4f8");
   const [currentUser, setCurrentUser] = useState(null);
   const [checkingSession, setCheckingSession] = useState(true);
 
@@ -2739,6 +2805,9 @@ export default function App() {
     inventoryCol.refresh(); transactionsCol.refresh(); reconciliationsCol.refresh(); refreshSummary();
   };
 
+  // Pull-to-refresh: fires refreshAllAfterMutation when user drags down from top
+  const { pull, refreshing } = usePullToRefresh(refreshAllAfterMutation);
+
   const wipeAll = async () => {
     await api.post("/api/admin/wipe");
     inventoryCol.refresh(); transactionsCol.refresh(); patientsCol.refresh();
@@ -2764,9 +2833,12 @@ export default function App() {
   }
 
   return (
+    <>
+    <AppSplash />
     <Shell>
       <style>{`
         @keyframes slideUp { from { transform: translateY(24px); opacity: 0.4; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
         * { box-sizing: border-box; }
         /* manipulation: fast-tap, no double-tap-zoom, no long-press scroll — overrides the global body rule for specific interactive elements */
         button, a, [role="button"] { touch-action: manipulation; }
@@ -2884,6 +2956,9 @@ export default function App() {
         </div>
       </div>
 
+      <PullToRefresh pull={pull} refreshing={refreshing} />
+      <InstallBanner />
+
       {showSettings && (
         <SettingsSheet
           onClose={() => setShowSettings(false)}
@@ -2899,6 +2974,7 @@ export default function App() {
         />
       )}
     </Shell>
+    </>
   );
 }
 
