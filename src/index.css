@@ -72,8 +72,9 @@ select {
 }
 
 /* ── Slide-up sheet animation ───────────────────────────────────────────── */
+/* Subtle nudge-in: the Sheet uses a 24px rise, not a full-screen slide */
 @keyframes slideUp {
-  from { transform: translateY(100%); opacity: 0; }
+  from { transform: translateY(24px); opacity: 0.4; }
   to   { transform: translateY(0);    opacity: 1; }
 }
 

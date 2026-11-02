@@ -354,6 +354,7 @@ function FAB({ onClick, label = "Add" }) {
   return (
     <button
       onClick={onClick}
+      className="fm-fab"
       style={{
         position: "fixed", bottom: 88, right: 18, zIndex: 30,
         background: `linear-gradient(180deg, #64bcc0 0%, #4ba4a8 100%)`,
@@ -372,6 +373,7 @@ function Sheet({ title, onClose, children, onBack }) {
   return (
     <div data-fm-modal className="app-no-print" style={{ position: "fixed", inset: 0, background: "rgba(26,26,46,0.45)", zIndex: 50, display: "flex", alignItems: "flex-end" }} onClick={onClose}>
       <div
+        className="fm-sheet"
         onClick={(e) => e.stopPropagation()}
         style={{
           background: SURFACE, width: "100%", maxHeight: "88vh", overflowY: "auto",
@@ -563,7 +565,7 @@ const NAV_ITEMS = [
 function BottomNav({ tab, setTab }) {
   return (
     <div className="app-no-print fm-bottom-nav" style={{ position: "fixed", bottom: "calc(0.6rem + env(safe-area-inset-bottom, 0px) / 2)", left: "50%", transform: "translateX(-50%)", width: "calc(100% - 1.5rem)", maxWidth: 480, zIndex: 40 }}>
-      <nav style={{ background: SURFACE, borderRadius: 26, padding: "8px 12px", display: "flex", justifyContent: "space-around", alignItems: "flex-end", boxShadow: SHADOW_CARD }}>
+      <nav style={{ background: SURFACE, borderRadius: 26, padding: "8px 12px", display: "flex", justifyContent: "space-around", alignItems: "flex-end", boxShadow: SHADOW_CARD, width: "100%" }}>
       {NAV_ITEMS.map((it) => {
         const active = tab === it.id;
         const Icon = it.icon;
@@ -2749,8 +2751,9 @@ export default function App() {
     <Shell>
       <style>{`
         @keyframes slideUp { from { transform: translateY(24px); opacity: 0.4; } to { transform: translateY(0); opacity: 1; } }
-        * { box-sizing: border-box; touch-action: pan-x pan-y; }
-        html { touch-action: pan-x pan-y; }
+        * { box-sizing: border-box; }
+        /* manipulation: fast-tap, no double-tap-zoom, no long-press scroll — overrides the global body rule for specific interactive elements */
+        button, a, [role="button"] { touch-action: manipulation; }
         ::selection { background: ${TEAL}33; }
         input:focus, select:focus, textarea:focus {
           border-color: ${TEAL} !important;
@@ -2767,15 +2770,24 @@ export default function App() {
         /* Sidebar layout — desktop/tablet */
         .fm-app-layout { display: flex; min-height: 100vh; min-height: 100dvh; }
         .fm-sidebar { display: none !important; }
-        .fm-main { flex: 1; min-width: 0; max-width: 560px; margin: 0 auto; position: relative; padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)); }
-        .fm-bottom-nav { display: flex; padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)) !important; }
+        /* Extra bottom padding so the floating pill nav never overlaps the last row */
+        .fm-main { flex: 1; min-width: 0; max-width: 560px; margin: 0 auto; position: relative; padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+        .fm-bottom-nav { display: block; }
+        /* FAB: sits above the pill nav on phone */
+        .fm-fab { bottom: calc(88px + env(safe-area-inset-bottom, 0px)) !important; }
+        /* Sheet: full-width drawer on phone */
+        .fm-sheet { width: 100% !important; max-width: 100% !important; }
         @media (min-width: 768px) {
           .fm-app-layout { align-items: flex-start; }
           .fm-sidebar { display: flex !important; flex-direction: column !important; }
-          .fm-main { max-width: 720px; margin: 0; padding-bottom: 0; }
+          /* Desktop content: left-aligned after sidebar, comfortable horizontal padding */
+          .fm-main { max-width: none; width: 100%; margin: 0; padding-bottom: 32px; padding-left: 8px; }
           .fm-bottom-nav { display: none !important; }
           .fm-topbar { display: none !important; }
-          .fm-main > div:first-child { padding-top: 0; }
+          /* FAB: no nav bar to clear on desktop */
+          .fm-fab { bottom: 28px !important; right: 28px !important; }
+          /* Sheet: centred card on desktop, not full-width */
+          .fm-sheet { max-width: 560px !important; margin: 0 auto !important; border-radius: 20px !important; }
         }
       `}</style>
 
