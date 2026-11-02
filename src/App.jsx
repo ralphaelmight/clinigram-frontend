@@ -3085,20 +3085,6 @@ function Report({ currentUser, ready }) {
         </Card>
       )}
 
-      {summary.lowStockItems.length > 0 && (
-        <Card style={{ marginBottom: 14 }}>
-          <div style={{ fontWeight: 700, fontSize: 14, color: RED, marginBottom: 8 }}>Stock to reorder</div>
-          {summary.lowStockItems.map((i) => <Row key={i.id} label={i.name} value={`${i.quantity} ${i.unit}`} />)}
-        </Card>
-      )}
-
-      {summary.expiringItems.length > 0 && (
-        <Card style={{ marginBottom: 14 }}>
-          <div style={{ fontWeight: 700, fontSize: 14, color: RED, marginBottom: 8 }}>Expiring / expired stock</div>
-          {summary.expiringItems.map((i) => <Row key={i.id} label={i.name} value={i.daysLeft < 0 ? "Expired" : `${i.daysLeft}d left`} color={RED} />)}
-        </Card>
-      )}
-
       <div style={{ textAlign: "center", fontSize: 11.5, color: FAINT, marginTop: 4 }}>Generated on {fmtDate(todayISO())} \u00b7 Clinigram Facility Manager</div>
     </div>
   );
