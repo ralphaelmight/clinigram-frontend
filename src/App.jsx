@@ -2703,7 +2703,7 @@ const FBC_PARAMS = [
 const INVESTIGATION_PRESETS = {
   "Finding": ["MP microscopy", "Serum PT (Pregnancy Test)", "Widal Test", "VDRL", "HIV Screening", "Hepatitis B Ag", "Other"],
   "Table": ["FBC (Full Blood Count)", "Lipid Profile", "Liver Function Test", "Kidney Function Test", "Random Blood Sugar", "Fasting Blood Sugar", "Other"],
-  "Urine M/C/S": ["Urine M/C/S"],
+  "M/C/S": ["M/C/S"],
 };
 
 function emptyTableRow() {
@@ -2725,6 +2725,7 @@ function LabReportSheet({ onClose }) {
     { description: "RBC", result: "Nil" },
     { description: "Others", result: "Nil" },
   ]);
+  const [mcsSample, setMcsSample] = useState("URINE");
   const [urineColor, setUrineColor] = useState("Amber");
   const [urineAppearance, setUrineAppearance] = useState("Clear");
   const [urineCulture, setUrineCulture] = useState("Culture yielded no bacteria growth after incubation at 37°C for 24hrs.");
@@ -2747,7 +2748,7 @@ function LabReportSheet({ onClose }) {
     setReportType(t);
     setInvestigation("");
     if (t === "Table") setRows(FBC_PARAMS.map((p) => ({ ...p, result: "" })));
-    if (t === "Urine M/C/S") setInvestigation("Urine M/C/S");
+    if (t === "M/C/S") setInvestigation("M/C/S");
   };
 
   const handleInvestigationChange = (v) => {
@@ -2776,11 +2777,11 @@ function LabReportSheet({ onClose }) {
 
       if (reportType === "Finding") {
         body = { reportType: "finding", investigation: resolvedInvestigation, sample, finding, patient: patientPayload, meta: metaPayload };
-      } else if (reportType === "Urine M/C/S") {
+      } else if (reportType === "M/C/S") {
         body = {
           reportType: "finding",
-          investigation: "Urine M/C/S",
-          sample: "URINE",
+          investigation: `${mcsSample} M/C/S`,
+          sample: mcsSample,
           finding: [
             `Colour: ${urineColor} · Appearance: ${urineAppearance}`,
             ...urineMicro.map((r) => `${r.description}: ${r.result}`),
@@ -2820,7 +2821,7 @@ function LabReportSheet({ onClose }) {
     <Sheet title="Lab Report Generator" onClose={onClose}>
       {/* Report type tabs */}
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        {["Finding", "Table", "Urine M/C/S"].map((t) => (
+        {["Finding", "Table", "M/C/S"].map((t) => (
           <button key={t} onClick={() => handleTypeChange(t)} style={{ flex: 1, border: "none", borderRadius: 10, padding: "9px 4px", fontSize: 12, fontWeight: 700, cursor: "pointer", background: reportType === t ? RED : SURFACE, color: reportType === t ? WHITE : MUTE, boxShadow: reportType === t ? SHADOW_CTA : SHADOW_SOFT }}>
             {t}
           </button>
@@ -2838,7 +2839,7 @@ function LabReportSheet({ onClose }) {
         )}
       </Field>
 
-      {reportType !== "Urine M/C/S" && (
+      {reportType !== "M/C/S" && (
         <Field label="Sample">
           <select value={sample} onChange={(e) => setSample(e.target.value)} style={inputStyle}>
             {["BLOOD", "SERUM", "URINE", "STOOL", "SPUTUM", "SWAB", "OTHER"].map((s) => <option key={s}>{s}</option>)}
@@ -2879,9 +2880,16 @@ function LabReportSheet({ onClose }) {
         </Field>
       )}
 
-      {/* Urine M/C/S */}
-      {reportType === "Urine M/C/S" && (
+      {/* M/C/S */}
+      {reportType === "M/C/S" && (
         <>
+          <Field label="Sample Type">
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {["URINE", "BLOOD", "SWAB", "HVS", "ENDOCERVICAL"].map((s) => (
+                <button key={s} onClick={() => setMcsSample(s)} style={{ border: "none", borderRadius: 10, padding: "7px 14px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", background: mcsSample === s ? RED : SURFACE, color: mcsSample === s ? WHITE : MUTE, boxShadow: mcsSample === s ? SHADOW_CTA : SHADOW_SOFT }}>{s}</button>
+              ))}
+            </div>
+          </Field>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
             <Field label="Colour"><Input value={urineColor} onChange={(e) => setUrineColor(e.target.value)} /></Field>
             <Field label="Appearance"><Input value={urineAppearance} onChange={(e) => setUrineAppearance(e.target.value)} /></Field>
