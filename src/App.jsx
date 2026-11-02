@@ -610,7 +610,7 @@ const NAV_ITEMS = [
 
 function BottomNav({ tab, setTab }) {
   return (
-    <div className="app-no-print fm-bottom-nav" style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "calc(100% - 1.5rem)", maxWidth: 480, zIndex: 40 }}>
+    <div className="app-no-print fm-bottom-nav" style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 40, background: SURFACE, paddingBottom: "env(safe-area-inset-bottom, 0px)", paddingLeft: "0.75rem", paddingRight: "0.75rem" }}>
       <nav style={{ background: SURFACE, borderRadius: 26, padding: "8px 12px", display: "flex", justifyContent: "space-around", alignItems: "flex-end", boxShadow: "6px 6px 15px #c7cedd, -6px -6px 15px #ffffff, 0 16px 40px -12px rgba(26,26,46,0.22)", width: "100%" }}>
       {NAV_ITEMS.map((it) => {
         const active = tab === it.id;
@@ -1651,7 +1651,7 @@ function Dashboard({ inventoryCol, servicesCol, visitsCol, patientsCol, transact
   const [activeVisitId, setActiveVisitId] = useState(null);
 
   return (
-    <div style={{ padding: "0 16px 80px" }}>
+    <div style={{ padding: "0 16px calc(72px + env(safe-area-inset-bottom, 0px))" }}>
       <TopBar title={`Good day, ${currentUser.name.split(" ")[0]}`} subtitle={`${currentUser.role} \u00b7 ${summary ? summary.label : ""}`} onSettings={onSettings} />
       <div style={{ display: "flex", gap: 10, marginTop: 8, marginBottom: 8 }}>
         {isAdmin
@@ -1826,7 +1826,7 @@ function Inventory({ inventoryCol, restocksCol, currentUser, summary }) {
   const expiring = summary?.expiringItems || [];
 
   return (
-    <div style={{ padding: "0 16px 80px" }}>
+    <div style={{ padding: "0 16px calc(72px + env(safe-area-inset-bottom, 0px))" }}>
       <TopBar title="Stock" subtitle={`${inventory.length} items tracked`}>
         <div style={{ display: "flex", background: LINE, borderRadius: 12, padding: 3, gap: 2 }}>
           <TabBtn id="pharmacy" label="Pharmacy" count={pharmacyCount} />
@@ -2051,7 +2051,7 @@ function Finance({ transactionsCol, patientsCol, servicesCol, reconciliationsCol
     : "Log consultation, procedure & other fees";
 
   return (
-    <div style={{ padding: "0 16px 80px" }}>
+    <div style={{ padding: "0 16px calc(72px + env(safe-area-inset-bottom, 0px))" }}>
       <TopBar title="Revenue & Expenditure" subtitle={topBarSubtitle} />
       <div style={{ display: "flex", gap: 10, marginTop: 8, marginBottom: 10 }}>
         {isAdmin
@@ -2172,7 +2172,7 @@ function Patients({ patientsCol }) {
   const removeIt = async (id) => { try { await remove(id); setSheet(null); } catch (e) { setError(e.message); } };
 
   return (
-    <div style={{ padding: "0 16px 80px" }}>
+    <div style={{ padding: "0 16px calc(72px + env(safe-area-inset-bottom, 0px))" }}>
       <TopBar title="Patient Folders" subtitle={`${patients.length} folders on record`}>
         <SearchBar value={query} onChange={setQuery} placeholder="Search name or hospital number..." />
       </TopBar>
@@ -2618,7 +2618,7 @@ function Visits({ visitsCol, patientsCol, inventoryCol, servicesCol, onMutate })
   const filtered = visits.filter((v) => v.patient_name.toLowerCase().includes(query.toLowerCase()) || (v.hospital_number || "").toLowerCase().includes(query.toLowerCase()));
 
   return (
-    <div style={{ padding: "0 16px 80px" }}>
+    <div style={{ padding: "0 16px calc(72px + env(safe-area-inset-bottom, 0px))" }}>
       <TopBar title="Visits" subtitle={`${visits.filter((v) => v.status === "open").length} open visit(s)`}>
         <SearchBar value={query} onChange={setQuery} placeholder="Search patient or hospital number..." />
       </TopBar>
@@ -2681,14 +2681,14 @@ function Report({ currentUser, ready }) {
 
   if (!summary) {
     return (
-      <div style={{ padding: "0 16px 80px" }}>
+      <div style={{ padding: "0 16px calc(72px + env(safe-area-inset-bottom, 0px))" }}>
         <TopBar title="Report" subtitle="Loading..." />
       </div>
     );
   }
 
   return (
-    <div style={{ padding: "0 16px 80px" }}>
+    <div style={{ padding: "0 16px calc(72px + env(safe-area-inset-bottom, 0px))" }}>
       <TopBar title="Report" subtitle={summary.label} />
       <div style={{ display: "flex", gap: 8, marginTop: 16, marginBottom: 10 }}>
         {["week", "month", "quarter"].map((p) => (
@@ -2896,7 +2896,7 @@ export default function App() {
 
         .fm-bottom-nav { display: block; }
         /* FAB sits above the pill nav */
-        .fm-fab { bottom: 84px !important; }
+        .fm-fab { bottom: calc(76px + env(safe-area-inset-bottom, 0px)) !important; }
         /* Sheet: full-width drawer on phone */
         .fm-sheet { width: 100% !important; max-width: 100% !important; }
 
