@@ -29,8 +29,10 @@ const TEAL_ALT   = "#42b4b8";   // brand-teal-alt (gradient end)
 const WHITE      = "#ffffff";
 const BRAND_DARK = "#17181a";
 const INK        = "#1a1a2e";   // primary text
+// Page background: pure white so neumorphic tiles (SURFACE) lift visibly off it
+const PAGE_BG    = "#ffffff";   // page / screen background
 // Telemed-matched surface: warm off-white that makes neumorphic shadows visible
-const SURFACE    = "#f2f4f8";   // page background
+const SURFACE    = "#f2f4f8";   // cards, tiles, topbar, nav pill, inputs
 const SUBTLE     = "#f5f7fa";   // hover fills, dividers, chips
 const MUTE       = "#6b7280";   // gray-500
 const FAINT      = "#9ca3af";   // gray-400
@@ -41,9 +43,9 @@ const BG   = SURFACE;
 
 // Neumorphic shadows — matched to telemed design tokens
 // Two-shadow technique: dark down-right + white highlight up-left
-const SHADOW_CARD  = "6px 6px 15px #c7cedd, -6px -6px 15px #ffffff";
-const SHADOW_SOFT  = "4px 4px 10px #c9d0de, -4px -4px 10px #ffffff";
-const SHADOW_INSET = "inset 4px 4px 8px #c9d0de, inset -4px -4px 8px #ffffff";
+const SHADOW_CARD  = "8px 8px 20px #c4ccd8, -8px -8px 20px #ffffff";
+const SHADOW_SOFT  = "5px 5px 12px #c9d0de, -5px -5px 12px #ffffff";
+const SHADOW_INSET = "inset 4px 4px 10px #c4ccd8, inset -4px -4px 10px #ffffff";
 const SHADOW_CTA   = "6px 8px 18px -4px rgba(233,50,35,0.42), -4px -4px 10px #ffffff";
 const SHADOW_TEAL  = "0 10px 24px -8px rgba(66,180,184,0.40)";
 
@@ -297,7 +299,7 @@ function useGeofenceLogout(currentUser, locations, onLogout) {
 
 function Shell({ children }) {
   return (
-    <div id="app-root" style={{ background: SURFACE, minHeight: "100dvh", fontFamily: "'Poppins', system-ui, sans-serif", color: INK }}>
+    <div id="app-root" style={{ background: PAGE_BG, minHeight: "100dvh", fontFamily: "'Poppins', system-ui, sans-serif", color: INK }}>
       {children}
     </div>
   );
@@ -361,7 +363,7 @@ function Stat({ icon, label, value, color, sub }) {
   return (
     <Card style={{ flex: 1, minWidth: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-        <div style={{ width: 28, height: 28, borderRadius: 8, background: `${color}1A`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ width: 36, height: 36, borderRadius: 12, background: `${color}1A`, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: SHADOW_SOFT, flexShrink: 0 }}>
           {icon}
         </div>
         <div style={{ fontSize: 12, color: MUTE, fontWeight: 600 }}>{label}</div>
@@ -376,7 +378,7 @@ function LockedStat({ label, icon, color }) {
   return (
     <Card style={{ flex: 1, minWidth: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-        <div style={{ width: 28, height: 28, borderRadius: 8, background: `${color}1A`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ width: 36, height: 36, borderRadius: 12, background: `${color}1A`, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: SHADOW_SOFT, flexShrink: 0 }}>
           {icon}
         </div>
         <div style={{ fontSize: 12, color: MUTE, fontWeight: 600 }}>{label}</div>
@@ -610,14 +612,16 @@ const NAV_ITEMS = [
 
 function BottomNav({ tab, setTab }) {
   return (
-    <div className="app-no-print fm-bottom-nav" style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 40, paddingLeft: "0.75rem", paddingRight: "0.75rem" }}>
-      <nav style={{ background: SURFACE, borderRadius: 26, padding: "8px 12px", display: "flex", justifyContent: "space-around", alignItems: "flex-end", boxShadow: "6px 6px 15px #c7cedd, -6px -6px 15px #ffffff, 0 16px 40px -12px rgba(26,26,46,0.22)", width: "100%" }}>
+    <div className="app-no-print fm-bottom-nav" style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 40, paddingLeft: "0.75rem", paddingRight: "0.75rem", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+      <nav style={{ background: SURFACE, borderRadius: 26, padding: "8px 12px 10px", display: "flex", justifyContent: "space-around", alignItems: "center", boxShadow: SHADOW_CARD + ", 0 16px 40px -12px rgba(26,26,46,0.22)", width: "100%" }}>
       {NAV_ITEMS.map((it) => {
         const active = tab === it.id;
         const Icon = it.icon;
         return (
           <button key={it.id} onClick={() => { haptic(); setTab(it.id); }} style={{ background: "none", border: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, cursor: "pointer", color: active ? RED : FAINT, flex: 1, padding: "4px 0", fontFamily: "inherit", position: "relative" }}>
-            <Icon size={21} strokeWidth={active ? 2.4 : 2} />
+            <span style={{ width: 44, height: 44, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", background: SURFACE, boxShadow: active ? SHADOW_INSET : SHADOW_SOFT, transition: "box-shadow 0.18s ease" }}>
+              <Icon size={21} strokeWidth={active ? 2.4 : 2} />
+            </span>
             <span style={{ fontSize: 10.5, fontWeight: active ? 700 : 500 }}>{it.label}</span>
             {active && <span style={{ position: "absolute", bottom: -2, width: 5, height: 5, borderRadius: "50%", background: TEAL }} />}
           </button>
@@ -633,7 +637,7 @@ function BottomNav({ tab, setTab }) {
 function Sidebar({ tab, setTab, currentUser, onSettings, onLogout }) {
   return (
     <aside className="app-no-print fm-sidebar" style={{
-      width: 256, flexShrink: 0, background: SURFACE, height: "100dvh", position: "sticky", top: 0,
+      width: 256, flexShrink: 0, background: PAGE_BG, height: "100dvh", position: "sticky", top: 0,
       flexDirection: "column", zIndex: 40,
       boxShadow: SHADOW_CARD,
     }}>
@@ -666,7 +670,7 @@ function Sidebar({ tab, setTab, currentUser, onSettings, onLogout }) {
             <button key={it.id} onClick={() => setTab(it.id)} style={{
               width: "100%", display: "flex", alignItems: "center", gap: 10,
               background: active ? RED : "transparent",
-              border: "none", borderRadius: 12, padding: "10px 14px", marginBottom: 2,
+              border: "none", borderRadius: 12, padding: "8px 12px", marginBottom: 2,
               cursor: "pointer", color: active ? WHITE : MUTE,
               fontWeight: active ? 700 : 600, fontSize: 13.5,
               boxShadow: active ? SHADOW_CTA : "none",
@@ -676,7 +680,9 @@ function Sidebar({ tab, setTab, currentUser, onSettings, onLogout }) {
             onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = SUBTLE; }}
             onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}
             >
-              <Icon size={18} strokeWidth={active ? 2.4 : 2} />
+              <span style={{ width: 32, height: 32, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", background: active ? "rgba(255,255,255,0.18)" : SURFACE, boxShadow: active ? "none" : SHADOW_SOFT, flexShrink: 0, transition: "box-shadow 0.15s" }}>
+                <Icon size={17} strokeWidth={active ? 2.4 : 2} />
+              </span>
               {it.label}
             </button>
           );
@@ -2885,7 +2891,7 @@ export default function App() {
         .fm-topbar {
           position: sticky; top: 0; z-index: 10;
           background: #f2f4f8;
-          box-shadow: 0 1px 0 rgba(26,26,46,0.06), 0 4px 16px -8px rgba(26,26,46,0.10);
+          box-shadow: 0 2px 0 rgba(26,26,46,0.06), 0 6px 20px -8px rgba(26,26,46,0.14);
           /* Break out of the screen's 16px horizontal padding so TopBar is full-width */
           margin-left: -16px;
           margin-right: -16px;
