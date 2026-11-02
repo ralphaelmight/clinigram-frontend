@@ -303,19 +303,22 @@ function Shell({ children }) {
   );
 }
 
-function TopBar({ title, subtitle, onSettings }) {
+function TopBar({ title, subtitle, onSettings, children }) {
   return (
-    <div className="fm-topbar" style={{ background: SURFACE, color: INK, padding: "16px 16px 20px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <ClinigramWordmarkLight />
+    <div className="fm-topbar" style={{ background: SURFACE, color: INK, padding: "10px 16px 10px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <ClinigramMark size={30} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {title && <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: "-0.02em", color: INK, lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</div>}
+          {subtitle && <div style={{ fontSize: 11, color: MUTE, marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{subtitle}</div>}
+        </div>
         {onSettings && (
-          <button onClick={onSettings} style={{ background: SURFACE, border: "none", borderRadius: 12, padding: 8, cursor: "pointer", boxShadow: SHADOW_SOFT }}>
+          <button onClick={onSettings} style={{ background: SURFACE, border: "none", borderRadius: 12, padding: 8, cursor: "pointer", boxShadow: SHADOW_SOFT, flexShrink: 0 }}>
             <Settings size={17} color={MUTE} />
           </button>
         )}
       </div>
-      {title && <div style={{ fontSize: 22, fontWeight: 800, marginTop: 14, letterSpacing: "-0.02em", color: INK }}>{title}</div>}
-      {subtitle && <div style={{ fontSize: 12.5, color: MUTE, marginTop: 3 }}>{subtitle}</div>}
+      {children && <div style={{ marginTop: 8 }}>{children}</div>}
     </div>
   );
 }
@@ -607,7 +610,7 @@ const NAV_ITEMS = [
 
 function BottomNav({ tab, setTab }) {
   return (
-    <div className="app-no-print fm-bottom-nav" style={{ position: "fixed", bottom: "calc(0.6rem + env(safe-area-inset-bottom, 0px) / 2)", left: "50%", transform: "translateX(-50%)", width: "calc(100% - 1.5rem)", maxWidth: 480, zIndex: 40 }}>
+    <div className="app-no-print fm-bottom-nav" style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "calc(100% - 1.5rem)", maxWidth: 480, zIndex: 40, paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 6px)" }}>
       <nav style={{ background: SURFACE, borderRadius: 26, padding: "8px 12px", display: "flex", justifyContent: "space-around", alignItems: "flex-end", boxShadow: "6px 6px 15px #c7cedd, -6px -6px 15px #ffffff, 0 16px 40px -12px rgba(26,26,46,0.22)", width: "100%" }}>
       {NAV_ITEMS.map((it) => {
         const active = tab === it.id;
@@ -1648,9 +1651,9 @@ function Dashboard({ inventoryCol, servicesCol, visitsCol, patientsCol, transact
   const [activeVisitId, setActiveVisitId] = useState(null);
 
   return (
-    <div style={{ padding: "0 16px calc(96px + env(safe-area-inset-bottom, 0px))" }}>
+    <div style={{ padding: "0 16px calc(82px + env(safe-area-inset-bottom, 0px))" }}>
       <TopBar title={`Good day, ${currentUser.name.split(" ")[0]}`} subtitle={`${currentUser.role} \u00b7 ${summary ? summary.label : ""}`} onSettings={onSettings} />
-      <div style={{ display: "flex", gap: 10, marginTop: 4, marginBottom: 12 }}>
+      <div style={{ display: "flex", gap: 10, marginTop: 8, marginBottom: 8 }}>
         {isAdmin
           ? <Stat icon={<TrendingUp size={15} color={TEAL} />} color={TEAL} label="Revenue" value={fmtNaira(summary?.revenue)} sub="this week" />
           : canSeeDailyRevenue
@@ -1662,23 +1665,10 @@ function Dashboard({ inventoryCol, servicesCol, visitsCol, patientsCol, transact
           ? <Stat icon={<TrendingDown size={15} color={RED} />} color={RED} label="Expenditure" value={fmtNaira(todayExpense)} sub="today" />
           : <Stat icon={<TrendingDown size={15} color={RED} />} color={RED} label="Expenditure" value={fmtNaira(summary?.expenditure)} sub="this week" />}
       </div>
-      <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+      <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
         <Stat icon={<Users size={15} color={RED} />} color={RED} label="New patients" value={summary?.newPatients ?? "\u2014"} sub="this week" />
         <Stat icon={<Package size={15} color={TEAL} />} color={TEAL} label="Low stock" value={lowStock.length} sub="items need reorder" />
       </div>
-
-      {expiring.length > 0 && (
-        <Card style={{ marginBottom: 14, border: `1.5px solid ${RED}33` }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}><CalendarClock size={16} color={RED} /><div style={{ fontWeight: 700, fontSize: 14, color: RED }}>Stock expiring soon</div></div>
-          {expiring.slice(0, 4).map((i) => (
-            <div key={i.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 13.5, borderTop: "1px solid #FBEAEA" }}>
-              <span>{i.name}</span><span style={{ fontWeight: 700, color: RED }}>{i.daysLeft < 0 ? "Expired" : `${i.daysLeft}d left`}</span>
-            </div>
-          ))}
-          {expiring.length > 4 && <div onClick={() => setTab("inventory")} style={{ fontSize: 12.5, color: TEAL, fontWeight: 700, marginTop: 6, cursor: "pointer" }}>View all {expiring.length} \u2192</div>}
-        </Card>
-      )}
-
 
       <AttendanceCard currentUser={currentUser} />
 
@@ -1691,18 +1681,6 @@ function Dashboard({ inventoryCol, servicesCol, visitsCol, patientsCol, transact
           onClose={() => { setActiveVisitId(null); visitsCol.refresh(); }}
           onMutate={() => { visitsCol.refresh(); inventoryCol.refresh(); onMutate(); }}
         />
-      )}
-
-      {lowStock.length > 0 && (
-        <Card style={{ marginBottom: 14, border: `1.5px solid ${RED}33` }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}><AlertTriangle size={16} color={RED} /><div style={{ fontWeight: 700, fontSize: 14, color: RED }}>Low stock alert</div></div>
-          {lowStock.slice(0, 4).map((i) => (
-            <div key={i.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 13.5, borderTop: "1px solid #FBEAEA" }}>
-              <span>{i.name}</span><span style={{ fontWeight: 700, color: RED }}>{i.quantity} {i.unit} left</span>
-            </div>
-          ))}
-          {lowStock.length > 4 && <div onClick={() => setTab("inventory")} style={{ fontSize: 12.5, color: TEAL, fontWeight: 700, marginTop: 6, cursor: "pointer" }}>View all {lowStock.length} \u2192</div>}
-        </Card>
       )}
 
       <div style={{ fontSize: 14, fontWeight: 700, color: RED, marginBottom: 8 }}>Quick actions</div>
@@ -1788,7 +1766,7 @@ function RestockHistorySheet({ restocks, onClose }) {
 
 /* ----------------------------- Inventory ----------------------------- */
 
-function Inventory({ inventoryCol, restocksCol, currentUser }) {
+function Inventory({ inventoryCol, restocksCol, currentUser, summary }) {
   const { data: inventory, create, update, remove } = inventoryCol;
   const [tab, setTab] = useState("pharmacy"); // "pharmacy" | "consumables"
   const [query, setQuery] = useState("");
@@ -1844,18 +1822,44 @@ function Inventory({ inventoryCol, restocksCol, currentUser }) {
     </button>
   );
 
+  const lowStock = summary?.lowStockItems || [];
+  const expiring = summary?.expiringItems || [];
+
   return (
-    <div style={{ padding: "0 16px calc(96px + env(safe-area-inset-bottom, 0px))" }}>
-      <TopBar title="Stock" subtitle={`${inventory.length} items tracked`} />
-      <div style={{ marginTop: 16 }}>
-        <div style={{ display: "flex", background: LINE, borderRadius: 12, padding: 3, marginBottom: 14, gap: 2 }}>
+    <div style={{ padding: "0 16px calc(82px + env(safe-area-inset-bottom, 0px))" }}>
+      <TopBar title="Stock" subtitle={`${inventory.length} items tracked`}>
+        <div style={{ display: "flex", background: LINE, borderRadius: 12, padding: 3, gap: 2 }}>
           <TabBtn id="pharmacy" label="Pharmacy" count={pharmacyCount} />
           <TabBtn id="consumables" label="Consumables" count={consumablesCount} />
         </div>
-        <div style={{ display: "flex", gap: 8, marginBottom: 8, justifyContent: "flex-end" }}>
-          <button onClick={() => setShowRestockHistory(true)} style={{ background: "#F2F3F4", color: MUTE, border: "none", borderRadius: 12, padding: "11px 14px", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}><PackagePlus size={15} /></button>
+        <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
+          <div style={{ flex: 1 }}><SearchBar value={query} onChange={setQuery} placeholder={`Search ${tab === "pharmacy" ? "pharmacy" : "consumables"}...`} /></div>
+          <button onClick={() => setShowRestockHistory(true)} style={{ background: "#F2F3F4", color: MUTE, border: "none", borderRadius: 12, padding: "11px 14px", fontWeight: 700, fontSize: 13.5, cursor: "pointer", flexShrink: 0 }}><PackagePlus size={15} /></button>
         </div>
-        <SearchBar value={query} onChange={setQuery} placeholder={`Search ${tab === "pharmacy" ? "pharmacy" : "consumables"}...`} />
+      </TopBar>
+      <div style={{ marginTop: 12 }}>
+        {expiring.length > 0 && (
+          <Card style={{ marginBottom: 12, border: `1.5px solid ${RED}33` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}><CalendarClock size={16} color={RED} /><div style={{ fontWeight: 700, fontSize: 13.5, color: RED }}>Expiring soon</div></div>
+            {expiring.slice(0, 4).map((i) => (
+              <div key={i.id} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13, borderTop: "1px solid #FBEAEA" }}>
+                <span>{i.name}</span><span style={{ fontWeight: 700, color: RED }}>{i.daysLeft < 0 ? "Expired" : `${i.daysLeft}d left`}</span>
+              </div>
+            ))}
+            {expiring.length > 4 && <div style={{ fontSize: 12, color: TEAL, fontWeight: 700, marginTop: 6 }}>+{expiring.length - 4} more</div>}
+          </Card>
+        )}
+        {lowStock.length > 0 && (
+          <Card style={{ marginBottom: 12, border: `1.5px solid ${RED}33` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}><AlertTriangle size={16} color={RED} /><div style={{ fontWeight: 700, fontSize: 13.5, color: RED }}>Low stock alert</div></div>
+            {lowStock.slice(0, 4).map((i) => (
+              <div key={i.id} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13, borderTop: "1px solid #FBEAEA" }}>
+                <span>{i.name}</span><span style={{ fontWeight: 700, color: RED }}>{i.quantity} {i.unit} left</span>
+              </div>
+            ))}
+            {lowStock.length > 4 && <div style={{ fontSize: 12, color: TEAL, fontWeight: 700, marginTop: 6 }}>+{lowStock.length - 4} more</div>}
+          </Card>
+        )}
         {filtered.length === 0 ? (
           <EmptyState icon={<Package size={40} />} text="No items yet" sub={`Tap + Add item to add ${tab === "pharmacy" ? "pharmacy stock" : "consumables"}`} />
         ) : (
@@ -2047,9 +2051,9 @@ function Finance({ transactionsCol, patientsCol, servicesCol, reconciliationsCol
     : "Log consultation, procedure & other fees";
 
   return (
-    <div style={{ padding: "0 16px calc(96px + env(safe-area-inset-bottom, 0px))" }}>
+    <div style={{ padding: "0 16px calc(82px + env(safe-area-inset-bottom, 0px))" }}>
       <TopBar title="Revenue & Expenditure" subtitle={topBarSubtitle} />
-      <div style={{ display: "flex", gap: 10, marginTop: 4, marginBottom: 14 }}>
+      <div style={{ display: "flex", gap: 10, marginTop: 8, marginBottom: 10 }}>
         {isAdmin
           ? <Stat icon={<TrendingUp size={15} color={TEAL} />} color={TEAL} label="Revenue (wk)" value={fmtNaira(summary?.revenue)} />
           : canSeeDailyRevenue
@@ -2168,10 +2172,11 @@ function Patients({ patientsCol }) {
   const removeIt = async (id) => { try { await remove(id); setSheet(null); } catch (e) { setError(e.message); } };
 
   return (
-    <div style={{ padding: "0 16px calc(96px + env(safe-area-inset-bottom, 0px))" }}>
-      <TopBar title="Patient Folders" subtitle={`${patients.length} folders on record`} />
-      <div style={{ marginTop: 16 }}>
+    <div style={{ padding: "0 16px calc(82px + env(safe-area-inset-bottom, 0px))" }}>
+      <TopBar title="Patient Folders" subtitle={`${patients.length} folders on record`}>
         <SearchBar value={query} onChange={setQuery} placeholder="Search name or hospital number..." />
+      </TopBar>
+      <div style={{ marginTop: 12 }}>
         {filtered.length === 0 ? (
           <EmptyState icon={<Users size={40} />} text="No patient folders yet" sub="Tap + Add folder to register a patient" />
         ) : (
@@ -2613,10 +2618,11 @@ function Visits({ visitsCol, patientsCol, inventoryCol, servicesCol, onMutate })
   const filtered = visits.filter((v) => v.patient_name.toLowerCase().includes(query.toLowerCase()) || (v.hospital_number || "").toLowerCase().includes(query.toLowerCase()));
 
   return (
-    <div style={{ padding: "0 16px calc(96px + env(safe-area-inset-bottom, 0px))" }}>
-      <TopBar title="Visits" subtitle={`${visits.filter((v) => v.status === "open").length} open visit(s)`} />
-      <div style={{ marginTop: 16 }}>
+    <div style={{ padding: "0 16px calc(82px + env(safe-area-inset-bottom, 0px))" }}>
+      <TopBar title="Visits" subtitle={`${visits.filter((v) => v.status === "open").length} open visit(s)`}>
         <SearchBar value={query} onChange={setQuery} placeholder="Search patient or hospital number..." />
+      </TopBar>
+      <div style={{ marginTop: 12 }}>
         {filtered.length === 0 ? (
           <EmptyState icon={<Stethoscope size={40} />} text="No visits yet" sub="Tap + Open visit to start one" />
         ) : (
@@ -2675,14 +2681,14 @@ function Report({ currentUser, ready }) {
 
   if (!summary) {
     return (
-      <div style={{ padding: "0 16px calc(96px + env(safe-area-inset-bottom, 0px))" }}>
+      <div style={{ padding: "0 16px calc(82px + env(safe-area-inset-bottom, 0px))" }}>
         <TopBar title="Report" subtitle="Loading..." />
       </div>
     );
   }
 
   return (
-    <div style={{ padding: "0 16px calc(96px + env(safe-area-inset-bottom, 0px))" }}>
+    <div style={{ padding: "0 16px calc(82px + env(safe-area-inset-bottom, 0px))" }}>
       <TopBar title="Report" subtitle={summary.label} />
       <div style={{ display: "flex", gap: 8, marginTop: 16, marginBottom: 10 }}>
         {["week", "month", "quarter"].map((p) => (
@@ -2887,7 +2893,7 @@ export default function App() {
 
         .fm-bottom-nav { display: block; }
         /* FAB sits above the pill nav */
-        .fm-fab { bottom: calc(88px + env(safe-area-inset-bottom, 0px)) !important; }
+        .fm-fab { bottom: calc(78px + env(safe-area-inset-bottom, 0px)) !important; }
         /* Sheet: full-width drawer on phone */
         .fm-sheet { width: 100% !important; max-width: 100% !important; }
 
@@ -2937,7 +2943,7 @@ export default function App() {
             <Dashboard inventoryCol={inventoryCol} servicesCol={servicesCol} visitsCol={visitsCol} patientsCol={patientsCol} transactionsCol={transactionsCol} summary={weekSummary} setTab={setTab} onSettings={() => setShowSettings(true)} currentUser={currentUser} onMutate={refreshAllAfterMutation} />
           </div>
           <div hidden={tab !== "inventory"}>
-            <InventoryWithRefresh inventoryCol={inventoryCol} restocksCol={restocksCol} currentUser={currentUser} onMutate={refreshAllAfterMutation} />
+            <InventoryWithRefresh inventoryCol={inventoryCol} restocksCol={restocksCol} currentUser={currentUser} summary={weekSummary} onMutate={refreshAllAfterMutation} />
           </div>
           <div hidden={tab !== "finance"}>
             <FinanceWithRefresh transactionsCol={transactionsCol} patientsCol={patientsCol} servicesCol={servicesCol} reconciliationsCol={reconciliationsCol} summary={weekSummary} currentUser={currentUser} onMutate={refreshAllAfterMutation} />
@@ -2979,8 +2985,8 @@ export default function App() {
 }
 
 // Small wrappers so child mutations also refresh the dashboard/report summary figures.
-function InventoryWithRefresh({ onMutate, ...props }) {
-  return <Inventory {...props} inventoryCol={{ ...props.inventoryCol, create: wrap(props.inventoryCol.create, onMutate), update: wrap(props.inventoryCol.update, onMutate), remove: wrap(props.inventoryCol.remove, onMutate) }} restocksCol={{ ...props.restocksCol, create: wrap(props.restocksCol.create, onMutate) }} />;
+function InventoryWithRefresh({ onMutate, summary, ...props }) {
+  return <Inventory {...props} summary={summary} inventoryCol={{ ...props.inventoryCol, create: wrap(props.inventoryCol.create, onMutate), update: wrap(props.inventoryCol.update, onMutate), remove: wrap(props.inventoryCol.remove, onMutate) }} restocksCol={{ ...props.restocksCol, create: wrap(props.restocksCol.create, onMutate) }} />;
 }
 function FinanceWithRefresh({ onMutate, ...props }) {
   return <Finance {...props} transactionsCol={{ ...props.transactionsCol, create: wrap(props.transactionsCol.create, onMutate), remove: wrap(props.transactionsCol.remove, onMutate) }} reconciliationsCol={{ ...props.reconciliationsCol, create: wrap(props.reconciliationsCol.create, onMutate) }} />;
