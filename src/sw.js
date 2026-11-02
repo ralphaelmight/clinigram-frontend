@@ -12,7 +12,8 @@ self.addEventListener("install", (event) => {
   self.skipWaiting();
 });
 
-// Activate: delete every old cache version, then claim all open tabs.
+// Activate: delete every old cache version, claim all open tabs, then tell
+// every client to reload so it picks up the new assets immediately.
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
@@ -21,6 +22,11 @@ self.addEventListener("activate", (event) => {
         Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
       )
       .then(() => self.clients.claim())
+      .then(() =>
+        self.clients.matchAll({ type: "window", includeUncontrolled: false }).then((clients) => {
+          clients.forEach((c) => c.postMessage({ type: "SW_ACTIVATED" }));
+        })
+      )
   );
 });
 
