@@ -36,7 +36,7 @@ export default function AppSplash() {
         </div>
         <p className="cg-name">Clinigram</p>
         <p className="cg-sub">FACILITY MANAGER</p>
-        <p className="cg-tag">Streamline your clinic, one screen at a time.</p>
+        <p className="cg-tag">Quality healthcare, one tap away.</p>
       </div>
 
       <div className="cg-dots" aria-hidden="true">
