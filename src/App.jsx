@@ -424,7 +424,7 @@ function Sheet({ title, onClose, children, onBack }) {
         style={{
           background: SURFACE, width: "100%", maxHeight: "88vh",
           overflowY: "auto", overflowX: "hidden",
-          borderRadius: "24px 24px 0 0", padding: "16px 20px 32px",
+          borderRadius: "24px 24px 0 0", padding: "16px 20px calc(32px + env(safe-area-inset-bottom, 0px))",
           animation: "slideUp 0.22s ease-out", boxShadow: "0 -8px 32px rgba(26,26,46,0.12)",
           overscrollBehaviorY: "contain",
         }}
@@ -3233,6 +3233,12 @@ export default function App() {
         }
 
         .fm-bottom-nav { display: block; }
+        /* When a modal sheet is open, hide the bottom nav + FAB so they never
+           cover the sheet's own buttons. iOS paints the fixed nav/FAB over the
+           fixed sheet (quirk of position:fixed inside a -webkit-overflow-scrolling
+           container), and behind the backdrop they're non-interactive anyway. */
+        body:has([data-fm-modal]) .fm-bottom-nav,
+        body:has([data-fm-modal]) .fm-fab { display: none !important; }
         /* FAB sits above the pill nav */
         .fm-fab { bottom: calc(92px + env(safe-area-inset-bottom, 0px)) !important; }
         /* Sheet: full-width drawer on phone */
