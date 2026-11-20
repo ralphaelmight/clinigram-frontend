@@ -19,6 +19,7 @@ import { usePullToRefresh } from "./hooks/usePullToRefresh";
 import AppSplash from "./components/AppSplash";
 import InstallBanner from "./components/InstallBanner";
 import PullToRefresh from "./components/PullToRefresh";
+import { ClinicalSection, PatientClinicalHistory } from "./components/Clinical.jsx";
 
 /* ----------------------------- brand tokens ----------------------------- */
 
@@ -1690,6 +1691,7 @@ function Dashboard({ inventoryCol, servicesCol, visitsCol, patientsCol, transact
           patients={patientsCol.data}
           onClose={() => { setActiveVisitId(null); visitsCol.refresh(); }}
           onMutate={() => { visitsCol.refresh(); inventoryCol.refresh(); onMutate(); }}
+          currentUser={currentUser}
         />
       )}
 
@@ -2153,7 +2155,7 @@ function Finance({ transactionsCol, patientsCol, servicesCol, reconciliationsCol
 
 /* ----------------------------- Patients ----------------------------- */
 
-function Patients({ patientsCol }) {
+function Patients({ patientsCol, currentUser }) {
   const { data: patients, create, update, remove } = patientsCol;
   const [query, setQuery] = useState("");
   const [sheet, setSheet] = useState(null);
@@ -2217,6 +2219,7 @@ function Patients({ patientsCol }) {
           <Field label="Note (optional)"><TextArea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Any reference note" /></Field>
           <div style={{ fontSize: 11.5, color: FAINT, marginBottom: 10, lineHeight: 1.5 }}>Recorded under Clinigram's lawful basis for healthcare service delivery, per NDPA 2023.</div>
           <PrimaryButton onClick={save} disabled={busy} color={RED}><Save size={16} /> {busy ? "Saving..." : "Save folder"}</PrimaryButton>
+          {sheet !== "add" && <PatientClinicalHistory patientId={sheet} user={currentUser} />}
           {sheet !== "add" && <GhostButton onClick={() => removeIt(sheet)} color={RED}><Trash2 size={14} /> Remove folder</GhostButton>}
         </Sheet>
       )}
@@ -2336,7 +2339,7 @@ const VISIT_ITEM_TYPES = [
   { id: "investigation", label: "Investigation" },
 ];
 
-function VisitDetailSheet({ visitId, inventory, services, patients, onClose, onMutate }) {
+function VisitDetailSheet({ visitId, inventory, services, patients, onClose, onMutate, currentUser }) {
   const [visit, setVisit] = useState(null);
   const [invoiceBusy, setInvoiceBusy] = useState(false);
   const [invoiceError, setInvoiceError] = useState("");
@@ -2471,6 +2474,8 @@ function VisitDetailSheet({ visitId, inventory, services, patients, onClose, onM
   return (
     <Sheet title={`Visit · ${visit.patient_name}`} onClose={onClose}>
       <div style={{ fontSize: 12, color: FAINT, marginBottom: 10 }}>HN {visit.hospital_number} · Opened {fmtDateTime(visit.opened_at)} by {visit.opened_by_name}</div>
+
+      <ClinicalSection visitId={visitId} visitOpen={visit.status === "open"} user={currentUser} patientId={visit.patient_id} />
 
       {visit.items.length > 0 && (
         <div style={{ marginBottom: 12 }}>
@@ -2616,7 +2621,7 @@ function VisitDetailSheet({ visitId, inventory, services, patients, onClose, onM
   );
 }
 
-function Visits({ visitsCol, patientsCol, inventoryCol, servicesCol, onMutate }) {
+function Visits({ visitsCol, patientsCol, inventoryCol, servicesCol, onMutate, currentUser }) {
   const { data: visits } = visitsCol;
   const [query, setQuery] = useState("");
   const [showOpen, setShowOpen] = useState(false);
@@ -2664,6 +2669,7 @@ function Visits({ visitsCol, patientsCol, inventoryCol, servicesCol, onMutate })
           patients={patientsCol.data}
           onClose={() => { setActiveVisitId(null); visitsCol.refresh(); }}
           onMutate={() => { visitsCol.refresh(); inventoryCol.refresh(); onMutate(); }}
+          currentUser={currentUser}
         />
       )}
     </div>
@@ -3296,10 +3302,10 @@ export default function App() {
             <FinanceWithRefresh transactionsCol={transactionsCol} patientsCol={patientsCol} servicesCol={servicesCol} reconciliationsCol={reconciliationsCol} summary={weekSummary} currentUser={currentUser} onMutate={refreshAllAfterMutation} />
           </div>
           <div hidden={tab !== "visits"}>
-            <Visits visitsCol={visitsCol} patientsCol={patientsCol} inventoryCol={inventoryCol} servicesCol={servicesCol} onMutate={refreshAllAfterMutation} />
+            <Visits visitsCol={visitsCol} patientsCol={patientsCol} inventoryCol={inventoryCol} servicesCol={servicesCol} onMutate={refreshAllAfterMutation} currentUser={currentUser} />
           </div>
           <div hidden={tab !== "patients"}>
-            <Patients patientsCol={patientsCol} />
+            <Patients patientsCol={patientsCol} currentUser={currentUser} />
           </div>
           <div hidden={tab !== "report"}>
             <Report currentUser={currentUser} ready={ready} />
