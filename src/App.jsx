@@ -124,10 +124,11 @@ function useApiCollection(endpoint, { enabled = true } = {}) {
 
   const create = async (body) => {
     const r = await api.post(endpoint, body);
-    // Optimistic: add to local state immediately, then confirm with refresh
-    setData((prev) => [...prev, r]);
-    _cache.set(endpoint, { data: [...((_cache.get(endpoint))?.data ?? []), r], ts: Date.now() });
-    refresh();
+    // The server only returns the new record's id (e.g. { id }), not the full row, so adding
+    // that stub to the list crashes screens that read name/hospital_number etc. Reload the
+    // real list instead (drop any in-flight load that started before this save).
+    _inflight.delete(endpoint);
+    await refresh();
     return r;
   };
 
