@@ -1810,8 +1810,9 @@ function Inventory({ inventoryCol, restocksCol, currentUser, summary }) {
     if (!form.name || form.quantity === "") return;
     setBusy(true);
     try {
-      if (sheet === "add") await create(form);
-      else await update(sheet, form);
+      const body = { ...form, phone: form.phone ? cleanPhone(form.phone) : form.phone };
+      if (sheet === "add") await create(body);
+      else await update(sheet, body);
       setSheet(null);
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
@@ -2156,6 +2157,10 @@ function Finance({ transactionsCol, patientsCol, servicesCol, reconciliationsCol
 
 /* ----------------------------- Patients ----------------------------- */
 
+// A phone number lets a clinic patient later be linked to their Clinigram telemedicine account.
+const cleanPhone = (v) => String(v || "").replace(/[ \t\-()]/g, "");
+const phoneProblem = (v) => (/^\+?[0-9]{10,15}$/.test(cleanPhone(v)) ? "" : "Enter a valid phone number (e.g. 08012345678)");
+
 function Patients({ patientsCol, currentUser }) {
   const { data: patients, create, update, remove } = patientsCol;
   const [query, setQuery] = useState("");
@@ -2171,6 +2176,9 @@ function Patients({ patientsCol, currentUser }) {
 
   const save = async () => {
     if (!form.name || !form.hospitalNumber) return;
+    // New folders need a phone; older ones may predate this rule, so only check if one is entered.
+    const pErr = sheet === "add" || form.phone ? phoneProblem(form.phone) : "";
+    if (pErr) { setError(pErr); return; }
     setBusy(true);
     try {
       if (sheet === "add") await create(form);
@@ -2216,7 +2224,7 @@ function Patients({ patientsCol, currentUser }) {
             </select>
           </Field>
           <Field label="Age (optional)"><Input value={form.age} onChange={(e) => setForm({ ...form, age: e.target.value })} placeholder="e.g. 34 or ADULT" /></Field>
-          <Field label="Phone (optional)"><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="08012345678" /></Field>
+          <Field label="Phone"><Input value={form.phone || ""} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="08012345678" /></Field>
           <Field label="Note (optional)"><TextArea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Any reference note" /></Field>
           <div style={{ fontSize: 11.5, color: FAINT, marginBottom: 10, lineHeight: 1.5 }}>Recorded under Clinigram's lawful basis for healthcare service delivery, per NDPA 2023.</div>
           <PrimaryButton onClick={save} disabled={busy} color={RED}><Save size={16} /> {busy ? "Saving..." : "Save folder"}</PrimaryButton>
@@ -2248,6 +2256,7 @@ function OpenVisitSheet({ patients, patientsCol, visitsCol, onClose, onOpened })
     if (mode === "registered" && !patient) { setError("Pick a patient folder or switch to walk-in"); return; }
     if (mode === "walkin" && !walkinName.trim()) { setError("Enter the patient's name"); return; }
     if (mode === "register" && (!regForm.name.trim() || !regForm.hospitalNumber.trim())) { setError("Name and hospital number are required"); return; }
+    if (mode === "register" && phoneProblem(regForm.phone)) { setError(phoneProblem(regForm.phone)); return; }
     setBusy(true);
     try {
       let payload;
@@ -2256,7 +2265,7 @@ function OpenVisitSheet({ patients, patientsCol, visitsCol, onClose, onOpened })
       } else if (mode === "walkin") {
         payload = { patientName: walkinName.trim() };
       } else {
-        const newPatient = await patientsCol.create(regForm);
+        const newPatient = await patientsCol.create({ ...regForm, phone: cleanPhone(regForm.phone) });
         payload = { patientId: newPatient.id, patientName: regForm.name, hospitalNumber: regForm.hospitalNumber };
       }
       const visit = await visitsCol.create(payload);
@@ -2324,7 +2333,7 @@ function OpenVisitSheet({ patients, patientsCol, visitsCol, onClose, onOpened })
             </select>
           </Field>
           <Field label="Age (optional)"><Input value={regForm.age} onChange={(e) => setRegForm({ ...regForm, age: e.target.value })} placeholder="e.g. 34 or ADULT" /></Field>
-          <Field label="Phone (optional)"><Input value={regForm.phone} onChange={(e) => setRegForm({ ...regForm, phone: e.target.value })} placeholder="08012345678" /></Field>
+          <Field label="Phone"><Input value={regForm.phone} onChange={(e) => setRegForm({ ...regForm, phone: e.target.value })} placeholder="08012345678" /></Field>
         </>
       )}
 
