@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Stethoscope, Activity, FileText, Plus, Save, CheckCircle2, X, ChevronDown, ChevronUp, Lock, History, AlertTriangle } from "lucide-react";
 import { api } from "../api";
+import { useTapLock, Spinner } from "../lib/tapLock";
 
 /*
   Paperless clinic (EMR) screens for Facility Manager.
@@ -97,16 +98,18 @@ function Num({ value, onChange, placeholder, disabled, step }) {
 }
 
 function Btn({ children, onClick, disabled, tone = "red", small }) {
+  const [pending, run] = useTapLock(onClick);
   const bg = disabled ? "#d1d5db" : tone === "teal" ? "linear-gradient(180deg,#64bcc0,#4ba4a8)" : tone === "plain" ? SUBTLE : "linear-gradient(180deg,#f2402d,#e42a1b)";
   return (
     <button
-      onClick={disabled ? undefined : onClick} disabled={disabled}
+      onClick={disabled ? undefined : run} disabled={disabled || pending} aria-busy={pending}
       style={{
         background: bg, color: tone === "plain" ? MUTE : WHITE, border: "none", borderRadius: 14,
         padding: small ? "8px 14px" : "12px 16px", fontSize: small ? 13 : 15, fontWeight: 700,
-        cursor: disabled ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, width: small ? "auto" : "100%",
+        cursor: pending ? "wait" : disabled ? "not-allowed" : "pointer", opacity: pending ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, width: small ? "auto" : "100%",
       }}
     >
+      {pending && <Spinner />}
       {children}
     </button>
   );

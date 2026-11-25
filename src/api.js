@@ -9,7 +9,19 @@ export function setToken(token) {
   else localStorage.removeItem(TOKEN_KEY);
 }
 
-async function request(method, path, body) {
+// Safety net: if the exact same save is already on its way, don't send it a second time.
+const pendingWrites = new Map();
+
+function request(method, path, body) {
+  if (method === "GET") return send(method, path, body);
+  const key = `${method} ${path} ${JSON.stringify(body ?? null)}`;
+  if (!pendingWrites.has(key)) {
+    pendingWrites.set(key, send(method, path, body).finally(() => pendingWrites.delete(key)));
+  }
+  return pendingWrites.get(key);
+}
+
+async function send(method, path, body) {
   const headers = { "Content-Type": "application/json" };
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;

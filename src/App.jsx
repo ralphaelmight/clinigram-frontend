@@ -13,6 +13,7 @@ import {
 import { api, getToken, setToken, postForBlob } from "./api";
 import { getA11y, setA11y, applyA11y } from "./utils/a11y.js";
 import { haptic } from "./lib/haptics";
+import { useTapLock, TapButton, Spinner, showSaved } from "./lib/tapLock";
 import { useEdgeSwipeGuard } from "./hooks/useEdgeSwipeGuard";
 import { useThemeColor } from "./hooks/useThemeColor";
 import { usePullToRefresh } from "./hooks/usePullToRefresh";
@@ -128,12 +129,14 @@ function useApiCollection(endpoint, { enabled = true } = {}) {
     // that stub to the list crashes screens that read name/hospital_number etc. Reload the
     // real list instead (drop any in-flight load that started before this save).
     _inflight.delete(endpoint);
-    await refresh();
+    refresh(); // not awaited: the form can close now, the list catches up a moment later
+    showSaved();
     return r;
   };
 
   const update = async (id, body) => {
     const r = await api.put(`${endpoint}/${id}`, body);
+    showSaved();
     setData((prev) => prev.map((item) => (item.id === id ? { ...item, ...r } : item)));
     refresh();
     return r;
@@ -501,6 +504,7 @@ function ToggleRow({ label, sub, on, onChange }) {
 }
 
 function PrimaryButton({ children, onClick, disabled, color, teal }) {
+  const [pending, run] = useTapLock(onClick);
   const bg = disabled
     ? "#d1d5db"
     : teal
@@ -510,19 +514,20 @@ function PrimaryButton({ children, onClick, disabled, color, teal }) {
   // `color` prop kept for backward compat but gradient takes precedence when not disabled
   return (
     <button
-      onClick={disabled ? undefined : (e) => { haptic('medium'); onClick?.(e); }}
-      disabled={disabled}
+      onClick={disabled ? undefined : (e) => { haptic('medium'); run(e); }}
+      disabled={disabled || pending}
+      aria-busy={pending}
       style={{
         width: "100%", background: bg, color: WHITE, border: "none",
         borderRadius: 16, padding: "13px 0", fontSize: 15, fontWeight: 700,
-        cursor: disabled ? "not-allowed" : "pointer",
+        cursor: pending ? "wait" : disabled ? "not-allowed" : "pointer",
+        opacity: pending ? 0.7 : 1,
         marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
         boxShadow: shadow, letterSpacing: "-0.01em",
         transition: "transform 0.1s, box-shadow 0.1s",
       }}
-      onMouseDown={disabled ? undefined : (e) => { e.currentTarget.style.transform = "scale(0.98)"; }}
-      onMouseUp={disabled ? undefined : (e) => { e.currentTarget.style.transform = "scale(1)"; }}
     >
+      {pending && <Spinner />}
       {children}
     </button>
   );
@@ -530,9 +535,9 @@ function PrimaryButton({ children, onClick, disabled, color, teal }) {
 
 function GhostButton({ children, onClick, color = MUTE }) {
   return (
-    <button onClick={onClick} style={{ width: "100%", background: "none", border: "none", color, fontWeight: 700, fontSize: 13.5, padding: "12px 0 2px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+    <TapButton onClick={onClick} style={{ width: "100%", background: "none", border: "none", color, fontWeight: 700, fontSize: 13.5, padding: "12px 0 2px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
       {children}
-    </button>
+    </TapButton>
   );
 }
 
@@ -799,7 +804,11 @@ function PinEntryScreen({ user, onSuccess, onBack }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
+  const signingIn = useRef(false);
+
   const submit = async () => {
+    if (signingIn.current) return;
+    signingIn.current = true;
     setBusy(true); setError("");
     try {
       let lat = null, lng = null;
@@ -820,6 +829,7 @@ function PinEntryScreen({ user, onSuccess, onBack }) {
     } catch (e) {
       setError(e.message); setPin("");
     } finally {
+      signingIn.current = false;
       setBusy(false);
     }
   };
@@ -1045,14 +1055,14 @@ function StaffCredentials({ staffId, staffRole, currentUser }) {
               )}
               {canAdmin && (
                 <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                  <button onClick={() => openDoc(c.id)} style={{ fontSize: 12, color: TEAL, fontWeight: 600, background: "none", border: "none", cursor: "pointer", padding: 0 }}>View document</button>
+                  <TapButton onClick={() => openDoc(c.id)} style={{ fontSize: 12, color: TEAL, fontWeight: 600, background: "none", border: "none", cursor: "pointer", padding: 0 }}>View document</TapButton>
                   {c.verification_status === "pending" && (
                     verifyingId === c.id ? (
                       <div style={{ flex: 1 }}>
                         <Input placeholder="Rejection reason (if rejecting)" value={rejectionReason} onChange={(e) => setRejectionReason(e.target.value)} style={{ marginBottom: 6 }} />
                         <div style={{ display: "flex", gap: 8 }}>
-                          <button onClick={() => verify(c.id, "verified")} style={{ fontSize: 12, color: "#fff", background: TEAL, border: "none", borderRadius: 7, padding: "5px 12px", cursor: "pointer", fontWeight: 700 }}>Approve</button>
-                          <button onClick={() => verify(c.id, "rejected")} style={{ fontSize: 12, color: "#fff", background: RED, border: "none", borderRadius: 7, padding: "5px 12px", cursor: "pointer", fontWeight: 700 }}>Reject</button>
+                          <TapButton onClick={() => verify(c.id, "verified")} style={{ fontSize: 12, color: "#fff", background: TEAL, border: "none", borderRadius: 7, padding: "5px 12px", cursor: "pointer", fontWeight: 700 }}>Approve</TapButton>
+                          <TapButton onClick={() => verify(c.id, "rejected")} style={{ fontSize: 12, color: "#fff", background: RED, border: "none", borderRadius: 7, padding: "5px 12px", cursor: "pointer", fontWeight: 700 }}>Reject</TapButton>
                           <button onClick={() => setVerifyingId(null)} style={{ fontSize: 12, color: FAINT, background: "none", border: "none", cursor: "pointer" }}>Cancel</button>
                         </div>
                       </div>
@@ -1254,9 +1264,9 @@ function InvestigationRecipeEditor({ service, inventory, onMutate }) {
       {recipes.map((r) => (
         <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: `1px solid #F1F4F6` }}>
           <div style={{ flex: 1, fontSize: 13 }}>{r.inventory_item_name}</div>
-          <Input type="number" min="0" step="any" value={r.quantity_used} onChange={(e) => updateQty(r, e.target.value)} style={{ width: 70 }} />
+          <RecipeQty key={`${r.id}:${r.quantity_used}`} initial={r.quantity_used} onSave={(v) => updateQty(r, v)} />
           <span style={{ fontSize: 12, color: FAINT }}>{r.inventory_item_unit}</span>
-          <button onClick={() => removeRecipe(r)} style={{ background: "none", border: "none", cursor: "pointer" }}><Trash2 size={14} color="#D9DEE1" /></button>
+          <TapButton onClick={() => removeRecipe(r)} style={{ background: "none", border: "none", cursor: "pointer" }}><Trash2 size={14} color="#D9DEE1" /></TapButton>
         </div>
       ))}
       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
@@ -1266,7 +1276,7 @@ function InvestigationRecipeEditor({ service, inventory, onMutate }) {
         </select>
         <Input type="number" min="0" step="any" value={pickQty} onChange={(e) => setPickQty(e.target.value)} style={{ flex: 1 }} />
       </div>
-      <button onClick={addRecipe} style={{ marginTop: 8, width: "100%", background: "#EAF8F8", color: TEAL, border: "none", borderRadius: 10, padding: "9px 0", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", justifyContent: "center", gap: 5 }}><Plus size={14} /> Add consumable</button>
+      <TapButton onClick={addRecipe} style={{ marginTop: 8, width: "100%", background: "#EAF8F8", color: TEAL, border: "none", borderRadius: 10, padding: "9px 0", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", justifyContent: "center", gap: 5 }}><Plus size={14} /> Add consumable</TapButton>
       {error && <div style={{ color: RED, fontSize: 12.5, fontWeight: 600, marginTop: 6 }}>{error}</div>}
     </Field>
   );
@@ -1591,13 +1601,26 @@ function SettingsSheet({ onClose, currentUser, staffCol, locations, onLocationsR
   );
 }
 
+function RecipeQty({ initial, onSave }) {
+  const [value, setValue] = useState(initial);
+  const commit = () => {
+    if (Number(value) > 0 && Number(value) !== Number(initial)) onSave(value);
+    else setValue(initial);
+  };
+  return (
+    <Input type="number" min="0" step="any" value={value} style={{ width: 70 }}
+      onChange={(e) => setValue(e.target.value)} onBlur={commit}
+      onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
+  );
+}
+
 function SettingsRow({ icon, label, onClick, danger, right }) {
   return (
-    <button onClick={onClick} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, background: WHITE, border: `1px solid ${LINE}`, borderRadius: 12, padding: "13px 14px", marginBottom: 9, cursor: "pointer" }}>
+    <TapButton onClick={onClick} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, background: WHITE, border: `1px solid ${LINE}`, borderRadius: 12, padding: "13px 14px", marginBottom: 9, cursor: "pointer" }}>
       <div style={{ width: 30, height: 30, borderRadius: 9, background: "#F6F7F8", display: "flex", alignItems: "center", justifyContent: "center" }}>{icon}</div>
       <span style={{ fontSize: 14, fontWeight: 600, color: danger ? RED : INK, flex: 1, textAlign: "left" }}>{label}</span>
       {right || <ChevronRight size={16} color={FAINT} />}
-    </button>
+    </TapButton>
   );
 }
 
@@ -2103,7 +2126,7 @@ function Finance({ transactionsCol, patientsCol, servicesCol, reconciliationsCol
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <div style={{ fontWeight: 700, fontSize: 14, color: t.type === "revenue" ? TEAL : RED }}>{t.type === "revenue" ? "+" : "\u2212"}{fmtNaira(t.amount)}</div>
-              {isAdmin && <button onClick={() => removeTx(t.id)} style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }}><Trash2 size={14} color="#D9DEE1" /></button>}
+              {isAdmin && <TapButton onClick={() => removeTx(t.id)} style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }}><Trash2 size={14} color="#D9DEE1" /></TapButton>}
             </div>
           </Card>
         ))
@@ -2267,6 +2290,8 @@ function OpenVisitSheet({ patients, patientsCol, visitsCol, onClose, onOpened })
       } else {
         const newPatient = await patientsCol.create({ ...regForm, phone: cleanPhone(regForm.phone) });
         payload = { patientId: newPatient.id, patientName: regForm.name, hospitalNumber: regForm.hospitalNumber };
+        setPatient({ id: newPatient.id, name: regForm.name, hospital_number: regForm.hospitalNumber });
+        setMode("registered");
       }
       const visit = await visitsCol.create(payload);
       onOpened(visit);
@@ -2519,7 +2544,7 @@ function VisitDetailSheet({ visitId, inventory, services, patients, onClose, onM
             </select>
             <Input type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)} style={{ flex: 1 }} />
           </div>
-          <button onClick={addItem} disabled={busy} style={{ marginTop: 8, width: "100%", background: "#EAF8F8", color: TEAL, border: "none", borderRadius: 10, padding: "9px 0", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", justifyContent: "center", gap: 5 }}><Plus size={14} /> Add</button>
+          <TapButton onClick={addItem} disabled={busy} style={{ marginTop: 8, width: "100%", background: "#EAF8F8", color: TEAL, border: "none", borderRadius: 10, padding: "9px 0", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", justifyContent: "center", gap: 5 }}><Plus size={14} /> Add</TapButton>
         </Field>
       )}
 
@@ -2540,7 +2565,7 @@ function VisitDetailSheet({ visitId, inventory, services, patients, onClose, onM
               <option value="card">Card</option>
             </select>
           </div>
-          <button onClick={addPayment} disabled={busy} style={{ marginTop: 8, width: "100%", background: "#EAF8F8", color: TEAL, border: "none", borderRadius: 10, padding: "9px 0", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", justifyContent: "center", gap: 5 }}><Banknote size={14} /> Record payment</button>
+          <TapButton onClick={addPayment} disabled={busy} style={{ marginTop: 8, width: "100%", background: "#EAF8F8", color: TEAL, border: "none", borderRadius: 10, padding: "9px 0", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", justifyContent: "center", gap: 5 }}><Banknote size={14} /> Record payment</TapButton>
         </Field>
       )}
 
