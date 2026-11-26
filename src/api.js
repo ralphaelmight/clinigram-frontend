@@ -18,6 +18,43 @@ export function noteSignedOut(data, token) {
   window.dispatchEvent(new CustomEvent("fm:signed-out", { detail: data.error }));
 }
 
+// A read that gets no answer is given up after 30 seconds (long enough for a sleeping server) and
+// tried once more. Saves are NEVER cut off or repeated: the server may already have done them.
+const READ_TIMEOUT_MS = 30000;
+const UNREACHABLE = "Can't reach the server. Check your connection and try again.";
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function readOnce(url, options) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), READ_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    let data = null;
+    try { data = await res.json(); } catch (e) { if (controller.signal.aborted) throw e; }
+    return { res, data };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function readWithRetry(url, options) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      const reply = await readOnce(url, options);
+      // 502/503/504 usually mean the server is restarting or waking up.
+      if (attempt > 1 || ![502, 503, 504].includes(reply.res.status)) return reply;
+    } catch (e) {
+      if (attempt > 1) throw new Error(UNREACHABLE);
+    }
+    await pause(1200);
+  }
+}
+
+// An update must not reload the app while a save is on its way (see lib/safeReload.js).
+export function hasPendingWrites() {
+  return pendingWrites.size > 0;
+}
+
 // Safety net: if the exact same save is already on its way, don't send it a second time.
 const pendingWrites = new Map();
 
@@ -35,14 +72,16 @@ async function send(method, path, body) {
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-
+  const url = `${BASE_URL}${path}`;
+  const options = { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined };
+  let res;
   let data = null;
-  try { data = await res.json(); } catch (e) { /* empty body */ }
+  if (method === "GET") {
+    ({ res, data } = await readWithRetry(url, options));
+  } else {
+    res = await fetch(url, options);
+    try { data = await res.json(); } catch (e) { /* empty body */ }
+  }
 
   if (!res.ok) {
     noteSignedOut(data, token);

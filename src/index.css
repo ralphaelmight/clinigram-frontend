@@ -84,6 +84,20 @@ button:not(:disabled):active {
   pointer-events: none;
 }
 
+/* ── Gentle motion ──────────────────────────────────────────────────────── */
+/* Screens and pop-ups fade in. Opacity only: moving them would drag the fixed buttons along. */
+.fm-main > div:not([hidden]):not(.fm-bottom-nav),
+[data-fm-modal] { animation: fm-fade-in 0.18s ease-out; }
+@keyframes fm-fade-in { from { opacity: 0.35; } to { opacity: 1; } }
+
+.fm-breathe { display: inline-block; animation: fm-breathe 1.6s ease-in-out infinite; }
+@keyframes fm-breathe { 50% { transform: scale(1.06); opacity: 0.85; } }
+.fm-dots { display: inline-flex; gap: 6px; }
+.fm-dots i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: fm-dot 1s ease-in-out infinite; }
+.fm-dots i:nth-child(2) { animation-delay: 0.15s; }
+.fm-dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes fm-dot { 0%, 100% { opacity: 0.3; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-3px); } }
+
 /* ── Scrollbars ─────────────────────────────────────────────────────────── */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

@@ -8,6 +8,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App.jsx";
 import { applyA11y } from "./utils/a11y.js";
+import { whenIdle } from "./lib/safeReload.js";
 
 // Apply saved accessibility prefs before first paint (no flash of unstyled content).
 applyA11y();
@@ -39,12 +40,15 @@ ReactDOM.createRoot(document.getElementById("root")).render(
 if ("serviceWorker" in navigator && import.meta.env.PROD) {
   let reloading = false;
 
-  function forceReload() {
+  function reloadNow() {
     if (reloading) return;
     reloading = true;
     // location.replace bypasses the browser's back-cache.
     window.location.replace(window.location.href.split("?")[0] + "?_r=" + Date.now());
   }
+
+  // Never reload over a half-filled form: wait until it has been saved or closed.
+  const forceReload = whenIdle(reloadNow);
 
   async function checkVersion() {
     try {

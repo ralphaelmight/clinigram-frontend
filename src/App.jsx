@@ -20,6 +20,8 @@ import { usePullToRefresh } from "./hooks/usePullToRefresh";
 import AppSplash from "./components/AppSplash";
 import InstallBanner from "./components/InstallBanner";
 import PullToRefresh from "./components/PullToRefresh";
+import BrandLoader from "./components/BrandLoader";
+import { useSheetSwipe } from "./lib/sheetSwipe";
 import { ClinicalSection, PatientClinicalHistory } from "./components/Clinical.jsx";
 
 /* ----------------------------- brand tokens ----------------------------- */
@@ -94,6 +96,9 @@ const EXPIRY_WARNING_DAYS = 60;
 const _cache = new Map();
 // In-flight deduplication: endpoint → Promise
 const _inflight = new Map();
+// Goes up at every sign-out, so a late reply meant for the previous person is thrown away.
+let _signIn = 0;
+function forgetSignedInData() { _signIn += 1; _cache.clear(); _inflight.clear(); }
 
 function useApiCollection(endpoint, { enabled = true } = {}) {
   const cached = _cache.get(endpoint);
@@ -103,30 +108,37 @@ function useApiCollection(endpoint, { enabled = true } = {}) {
 
   const refresh = useCallback(async () => {
     if (!enabled) return;
+    const signIn = _signIn;
     // Deduplicate concurrent calls for same endpoint
     if (!_inflight.has(endpoint)) {
       const req = api.get(endpoint).then((rows) => {
-        _cache.set(endpoint, { data: rows, ts: Date.now() });
-        _inflight.delete(endpoint);
+        if (signIn === _signIn) {
+          _cache.set(endpoint, { data: rows, ts: Date.now() });
+          _inflight.delete(endpoint);
+        }
         return rows;
       }).catch((e) => {
-        _inflight.delete(endpoint);
+        if (signIn === _signIn) _inflight.delete(endpoint);
         throw e;
       });
       _inflight.set(endpoint, req);
     }
     try {
       const rows = await _inflight.get(endpoint);
+      if (signIn !== _signIn) return;
       setData(rows);
       setError(null);
     } catch (e) {
-      setError(e.message);
+      if (signIn === _signIn) setError(e.message);
     } finally {
-      setLoaded(true);
+      if (signIn === _signIn) setLoaded(true);
     }
   }, [endpoint, enabled]);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => {
+    if (!enabled) { setData([]); setLoaded(false); setError(null); return; }
+    refresh();
+  }, [refresh, enabled]);
 
   const create = async (body) => {
     const r = await api.post(endpoint, body);
@@ -162,10 +174,11 @@ function useSummary(period, offset, ready) {
   const [summary, setSummary] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const refresh = useCallback(async () => {
-    if (!ready) return;
+    if (!ready) { setSummary(null); setLoaded(false); return; }
+    const signIn = _signIn;
     try {
       const s = await api.get(`/api/reports/summary?period=${period}&offset=${offset}`);
-      setSummary(s);
+      if (signIn === _signIn) setSummary(s);
     } catch (e) { /* ignore, will retry on next refresh */ }
     finally { setLoaded(true); }
   }, [period, offset, ready]);
@@ -420,6 +433,7 @@ function FAB({ onClick, label = "Add" }) {
 }
 
 function Sheet({ title, onClose, children, onBack }) {
+  const swipe = useSheetSwipe(onClose);
   return (
     <div
       data-fm-modal
@@ -439,6 +453,7 @@ function Sheet({ title, onClose, children, onBack }) {
           overscrollBehaviorY: "contain",
         }}
       >
+        <div {...swipe}>
         <div style={{ width: 36, height: 4, background: SUBTLE, borderRadius: 4, margin: "0 auto 16px" }} />
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -452,6 +467,7 @@ function Sheet({ title, onClose, children, onBack }) {
           <button onClick={onClose} style={{ background: SUBTLE, border: "none", borderRadius: 10, padding: 7, cursor: "pointer" }}>
             <X size={18} color={MUTE} />
           </button>
+        </div>
         </div>
         {children}
       </div>
@@ -553,7 +569,18 @@ function ErrorBanner({ message }) {
   return <div style={{ background: `${RED}14`, color: RED, fontSize: 12.5, fontWeight: 600, padding: "10px 14px", borderRadius: 12, marginBottom: 10 }}>{message}</div>;
 }
 
-function EmptyState({ icon, text, sub }) {
+function EmptyState({ icon, text, sub, col }) {
+  // A list that hasn't arrived yet must never say it is empty.
+  if (col && !col.loaded) return <div role="status" aria-label="Loading"><SkeletonList /></div>;
+  if (col && col.error && col.data.length === 0) {
+    return (
+      <div role="alert" style={{ textAlign: "center", padding: "36px 20px", color: MUTE }}>
+        <div style={{ fontSize: 14.5, fontWeight: 600 }}>Couldn&apos;t load this list</div>
+        <div style={{ fontSize: 13, margin: "4px 0 12px" }}>{col.error}</div>
+        <button type="button" onClick={col.refresh} style={{ background: WHITE, color: INK, border: "1px solid #c3cad3", borderRadius: 12, padding: "9px 18px", fontWeight: 600, fontSize: 13.5, cursor: "pointer", fontFamily: "inherit" }}>Try again</button>
+      </div>
+    );
+  }
   return (
     <div style={{ textAlign: "center", padding: "44px 20px", color: FAINT }}>
       <div style={{ display: "flex", justifyContent: "center", marginBottom: 10, opacity: 0.6 }}>{icon}</div>
@@ -934,14 +961,14 @@ function AuthGate({ onLogin }) {
 
   if (connErr) return <ConnectionError onRetry={retry} />;
   if (locations === null) {
-    return <div style={{ minHeight: "100dvh", background: RED, display: "flex", alignItems: "center", justifyContent: "center", color: WHITE, fontSize: 13.5 }}>Connecting...</div>;
+    return <BrandLoader onRed label="Connecting to Clinigram" />;
   }
   // No locations yet — first-run setup
   if (locations.length === 0) return <CreateAdminScreen onDone={onLogin} />;
   // Multi-branch: show picker first
   if (!branch) return <BranchSelectScreen locations={locations} onPick={setBranch} />;
   if (staffList === null) {
-    return <div style={{ minHeight: "100dvh", background: RED, display: "flex", alignItems: "center", justifyContent: "center", color: WHITE, fontSize: 13.5 }}>Loading staff...</div>;
+    return <BrandLoader onRed label="Loading staff" />;
   }
   if (staffList.length === 0) {
     return <CreateAdminScreen onDone={onLogin} />;
@@ -1042,7 +1069,7 @@ function StaffCredentials({ staffId, staffRole, currentUser }) {
     <div style={{ marginTop: 20 }}>
       <div style={{ fontWeight: 700, fontSize: 13, color: MUTE, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Credentials</div>
       {error && <div style={{ color: RED, fontSize: 12, marginBottom: 8 }}>{error}</div>}
-      {loading ? <div style={{ fontSize: 12, color: FAINT }}>Loading…</div> : (
+      {loading ? <div role="status" aria-label="Loading"><SkeletonList count={1} /></div> : (
         <>
           {creds.length === 0 && <div style={{ fontSize: 12, color: FAINT, marginBottom: 8 }}>No credentials uploaded yet.</div>}
           {creds.map((c) => (
@@ -1377,7 +1404,7 @@ function ManageServices({ servicesCol, inventoryCol, onClose }) {
           </div>
         );
       })}
-      {services.length === 0 && <EmptyState icon={<Tag size={36} />} text="No price list items yet" />}
+      {services.length === 0 && <EmptyState col={servicesCol} icon={<Tag size={36} />} text="No price list items yet" />}
       <PrimaryButton color={TEAL} onClick={openAdd}><Plus size={16} /> Add price list item</PrimaryButton>
     </Sheet>
   );
@@ -1541,7 +1568,7 @@ function SettingsSheet({ onClose, currentUser, staffCol, rosterCol, locations, o
       <Sheet title="Audit log" onClose={onClose} onBack={() => setView("main")}>
         <div style={{ fontSize: 12.5, color: MUTE, marginBottom: 10 }}>Every action below is attributed to the staff account that performed it, recorded automatically by the server.</div>
         {auditCol.data.length === 0 ? (
-          <EmptyState icon={<ScrollText size={36} />} text="No activity logged yet" />
+          <EmptyState col={auditCol} icon={<ScrollText size={36} />} text="No activity logged yet" />
         ) : (
           auditCol.data.map((e, i) => (
             <div key={e.id || i} style={{ padding: "8px 0", borderTop: "1px solid #F1F4F6" }}>
@@ -2003,11 +2030,11 @@ function RestockSheet({ item, restocksCol, onClose }) {
   );
 }
 
-function RestockHistorySheet({ restocks, onClose }) {
+function RestockHistorySheet({ restocks, col, onClose }) {
   return (
     <Sheet title="Restock log" onClose={onClose}>
       {restocks.length === 0 ? (
-        <EmptyState icon={<History size={36} />} text="No restocks recorded yet" />
+        <EmptyState col={col} icon={<History size={36} />} text="No restocks recorded yet" />
       ) : (
         restocks.map((r) => (
           <div key={r.id} style={{ padding: "10px 0", borderTop: `1px solid #F1F4F6` }}>
@@ -2123,7 +2150,7 @@ function Inventory({ inventoryCol, restocksCol, currentUser, summary }) {
           </Card>
         )}
         {filtered.length === 0 ? (
-          <EmptyState icon={<Package size={40} />} text="No items yet" sub={`Tap + Add item to add ${tab === "pharmacy" ? "pharmacy stock" : "consumables"}`} />
+          <EmptyState col={inventoryCol} icon={<Package size={40} />} text="No items yet" sub={`Tap + Add item to add ${tab === "pharmacy" ? "pharmacy stock" : "consumables"}`} />
         ) : (
           filtered.map((item) => {
             const low = Number(item.quantity) <= Number(item.reorder_level || 0);
@@ -2180,7 +2207,7 @@ function Inventory({ inventoryCol, restocksCol, currentUser, summary }) {
         </Sheet>
       )}
 
-      {showRestockHistory && <RestockHistorySheet restocks={restocksCol.data} onClose={() => setShowRestockHistory(false)} />}
+      {showRestockHistory && <RestockHistorySheet col={restocksCol} restocks={restocksCol.data} onClose={() => setShowRestockHistory(false)} />}
       {restockFor && <RestockSheet item={restockFor} restocksCol={restocksCol} onClose={() => { setRestockFor(null); inventoryCol.refresh(); }} />}
     </div>
   );
@@ -2210,7 +2237,7 @@ function CashReconciliationSheet({ reconciliationsCol, onClose }) {
     return (
       <Sheet title="Reconciliation history" onClose={onClose} onBack={() => setShowHistory(false)}>
         {reconciliationsCol.data.length === 0 ? (
-          <EmptyState icon={<Banknote size={36} />} text="No reconciliations logged yet" />
+          <EmptyState col={reconciliationsCol} icon={<Banknote size={36} />} text="No reconciliations logged yet" />
         ) : (
           reconciliationsCol.data.map((r) => (
             <div key={r.id} style={{ padding: "10px 0", borderTop: `1px solid #F1F4F6` }}>
@@ -2341,7 +2368,7 @@ function Finance({ transactionsCol, patientsCol, servicesCol, reconciliationsCol
       </div>
 
       {filtered.length === 0 ? (
-        <EmptyState icon={<Wallet size={40} />} text="No transactions yet" sub="Log your first revenue or expense" />
+        <EmptyState col={transactionsCol} icon={<Wallet size={40} />} text="No transactions yet" sub="Log your first revenue or expense" />
       ) : (
         filtered.map((t) => (
           <Card key={t.id} style={{ marginBottom: 9, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -2451,7 +2478,7 @@ function Patients({ patientsCol, currentUser }) {
       </TopBar>
       <div style={{ marginTop: 12 }}>
         {filtered.length === 0 ? (
-          <EmptyState icon={<Users size={40} />} text="No patient folders yet" sub="Tap + Add folder to register a patient" />
+          <EmptyState col={patientsCol} icon={<Users size={40} />} text="No patient folders yet" sub="Tap + Add folder to register a patient" />
         ) : (
           filtered.map((p) => (
             <Card key={p.id} style={{ marginBottom: 9, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }} onClickCapture={() => openEdit(p)}>
@@ -2734,7 +2761,7 @@ function VisitDetailSheet({ visitId, inventory, services, patients, onClose, onM
     finally { setWriteOffBusy(false); }
   };
 
-  if (!visit) return <Sheet title="Visit" onClose={onClose}><div style={{ color: FAINT, fontSize: 13 }}>Loading...</div></Sheet>;
+  if (!visit) return <Sheet title="Visit" onClose={onClose}><div role="status" aria-label="Loading"><SkeletonList /></div></Sheet>;
 
   const isOpen = visit.status === "open";
 
@@ -2903,7 +2930,7 @@ function Visits({ visitsCol, patientsCol, inventoryCol, servicesCol, onMutate, c
       </TopBar>
       <div style={{ marginTop: 12 }}>
         {filtered.length === 0 ? (
-          <EmptyState icon={<Stethoscope size={40} />} text="No visits yet" sub="Tap + Open visit to start one" />
+          <EmptyState col={visitsCol} icon={<Stethoscope size={40} />} text="No visits yet" sub="Tap + Open visit to start one" />
         ) : (
           filtered.map((v) => (
             <Card key={v.id} style={{ marginBottom: 9, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }} onClickCapture={() => setActiveVisitId(v.id)}>
@@ -3309,6 +3336,7 @@ function Report({ currentUser, ready }) {
     return (
       <div style={{ padding: "0 16px calc(96px + env(safe-area-inset-bottom, 0px))" }}>
         <TopBar title="Report" subtitle="Loading..." />
+        <div role="status" aria-label="Loading" style={{ marginTop: 14 }}><SkeletonList /></div>
       </div>
     );
   }
@@ -3390,7 +3418,7 @@ export default function App() {
   const [signedOutNotice, setSignedOutNotice] = useState("");
   useEffect(() => {
     const onSignedOut = (e) => {
-      _cache.clear();
+      forgetSignedInData();
       setSignedOutNotice(e.detail || "You've been signed out.");
       setCurrentUser(null); setTab("dashboard"); setShowSettings(false);
     };
@@ -3423,7 +3451,7 @@ export default function App() {
         const me = await api.get("/api/auth/me");
         setCurrentUser(me);
       } catch (e) {
-        setToken(null);
+        if (e.status === 401) setToken(null);
       } finally {
         setCheckingSession(false);
       }
@@ -3469,14 +3497,14 @@ export default function App() {
   const handleLogin = (user) => { setSignedOutNotice(""); setCurrentUser(user); };
   const handleLogout = useCallback(async () => {
     try { await api.post("/api/auth/logout", {}); } catch { /* best-effort */ }
-    setToken(null); setCurrentUser(null); setTab("dashboard");
+    setToken(null); forgetSignedInData(); setCurrentUser(null); setTab("dashboard"); setShowSettings(false);
   }, []);
 
   const geofenceCountdown = useGeofenceLogout(currentUser, locationsCol.data, handleLogout);
   const isDesktop = useIsDesktop();
 
   if (checkingSession) {
-    return <Shell><div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100dvh", color: FAINT, fontSize: 13.5 }}>Loading...</div></Shell>;
+    return <Shell><BrandLoader label="Opening Clinigram" /></Shell>;
   }
 
   if (!currentUser) {
