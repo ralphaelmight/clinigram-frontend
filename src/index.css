@@ -108,3 +108,33 @@ button:not(:disabled):active {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ── Form controls: force the flat box on iOS ───────────────────────────── */
+/* iOS Safari renders native <select> and date inputs with its own chrome and
+   ignores the JS border/background, so fields looked boxless. Normalise the
+   appearance here (this file loads before login, unlike App.jsx's <style>). */
+select,
+input[type="date"],
+input[type="number"],
+input[type="text"],
+input[type="tel"],
+input[type="password"],
+input[type="search"],
+textarea {
+  -webkit-appearance: none;
+  appearance: none;
+  min-height: 44px;
+}
+textarea { min-height: 70px; }
+/* Dropdown chevron — !important so the inline `background` shorthand can't wipe it. */
+select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 12px center !important;
+  padding-right: 38px !important;
+}
+input[type="date"]::-webkit-date-and-time-value { text-align: left; }
+/* Leave tick-boxes native. */
+input[type="checkbox"], input[type="radio"] {
+  -webkit-appearance: auto; appearance: auto; min-height: 0;
+}

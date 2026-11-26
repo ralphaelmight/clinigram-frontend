@@ -469,11 +469,13 @@ function Field({ label, children, style }) {
   );
 }
 
+// Flat, high-contrast fields (white surface + hairline border) — the one restyle
+// applied app-wide. Keeps the teal focus ring from the global input:focus CSS.
 const inputStyle = {
-  width: "100%", padding: "11px 12px", borderRadius: 12, border: "2px solid transparent",
+  width: "100%", padding: "11px 12px", borderRadius: 12, border: "1px solid #d1d5db",
   fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: "inherit",
-  background: SURFACE, color: INK,
-  boxShadow: SHADOW_INSET,
+  background: WHITE, color: INK,
+  boxShadow: "none",
   transition: "border-color 0.15s, box-shadow 0.15s",
 };
 

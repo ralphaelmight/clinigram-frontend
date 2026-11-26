@@ -19,7 +19,6 @@ const SURFACE = "#f2f4f8";
 const SUBTLE = "#f5f7fa";
 const MUTE = "#6b7280";
 const FAINT = "#9ca3af";
-const SHADOW_INSET = "inset 4px 4px 10px #c4ccd8, inset -4px -4px 10px #ffffff";
 const SHADOW_SOFT = "5px 5px 12px #c9d0de, -5px -5px 12px #ffffff";
 
 const VIEW_ROLES = ["Doctor", "Nurse", "Paramedic", "Super Admin"];
@@ -28,10 +27,13 @@ const VITALS_ROLES = ["Doctor", "Nurse", "Paramedic", "Super Admin"];
 
 export const canViewClinical = (role) => VIEW_ROLES.includes(role);
 
+// Flat fields, matching the app-wide input restyle (white + hairline border).
+// Teal focus ring comes from the global input:focus CSS in App.jsx.
 const inputStyle = {
-  width: "100%", padding: "10px 12px", borderRadius: 12, border: "2px solid transparent",
+  width: "100%", padding: "10px 12px", borderRadius: 12, border: "1px solid #d1d5db",
   fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: "inherit",
-  background: SURFACE, color: INK, boxShadow: SHADOW_INSET,
+  background: WHITE, color: INK, boxShadow: "none",
+  transition: "border-color 0.15s, box-shadow 0.15s",
 };
 
 const fmtDate = (iso) => {
@@ -88,11 +90,12 @@ function Txt({ value, onChange, rows = 2, placeholder, disabled }) {
   );
 }
 
-function Num({ value, onChange, placeholder, disabled, step }) {
+function Num({ value, onChange, placeholder, disabled, step, abnormal }) {
   return (
     <input
       type="number" inputMode="decimal" step={step || "any"} value={value ?? ""} placeholder={placeholder} disabled={disabled}
-      onChange={(e) => onChange(e.target.value)} style={inputStyle}
+      onChange={(e) => onChange(e.target.value)}
+      style={abnormal ? { ...inputStyle, borderColor: RED, color: RED, fontWeight: 700 } : inputStyle}
     />
   );
 }
@@ -133,18 +136,6 @@ function Overlay({ title, onClose, children }) {
         </div>
         {children}
       </div>
-    </div>
-  );
-}
-
-function Group({ title, open: initial = false, children }) {
-  const [open, setOpen] = useState(initial);
-  return (
-    <div style={{ background: WHITE, borderRadius: 16, marginBottom: 10, boxShadow: SHADOW_SOFT }}>
-      <button onClick={() => setOpen(!open)} style={{ width: "100%", background: "none", border: "none", padding: "13px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", fontWeight: 700, fontSize: 14, color: INK }}>
-        {title}{open ? <ChevronUp size={16} color={MUTE} /> : <ChevronDown size={16} color={MUTE} />}
-      </button>
-      {open && <div style={{ padding: "0 14px 6px" }}>{children}</div>}
     </div>
   );
 }
@@ -210,13 +201,125 @@ const TEXT_GROUPS = [
 ];
 const NUMERIC_KEYS = ["temperature", "pulse_rate", "respiratory_rate", "blood_pressure_systolic", "blood_pressure_diastolic", "oxygen_saturation", "weight_kg", "height_cm"];
 
-function NoteEditor({ visitId, note, canPrivate, onClose, onSaved }) {
+// Common presenting complaints — one tap appends to the chief-complaint field.
+const COMPLAINT_CHIPS = ["Fever", "Cough", "Headache", "Body pain", "Vomiting", "Diarrhoea", "Abdominal pain", "Malaria"];
+// Fields tucked behind "+ Add" within each SOAP section (keys match TEXT_GROUPS so payload() still sends them).
+const SUBJECTIVE_MORE = [
+  ["history_of_presenting_complaint", "History of presenting complaint", 3], ["duration", "Duration", 1],
+  ["past_medical_history", "Past medical history", 2], ["surgical_history", "Surgical history", 2],
+  ["family_history", "Family history", 2], ["social_history", "Social history", 2],
+  ["allergies", "Allergies", 1], ["current_medications", "Current medications", 2],
+  ["immunisation_history", "Immunisation history", 1], ["review_of_systems", "Review of systems", 3],
+];
+const EXAM_FIELDS = [
+  ["general_examination", "General", 2], ["cardiovascular_examination", "Cardiovascular", 2],
+  ["respiratory_examination", "Respiratory", 2], ["abdominal_examination", "Abdominal", 2],
+  ["neurological_examination", "Neurological", 2], ["musculoskeletal_examination", "Musculoskeletal", 2],
+  ["other_examination", "Other", 2],
+];
+
+// A clean SOAP block: lettered badge + title, then its fields.
+function SoapSection({ letter, title, hint, children }) {
+  return (
+    <div style={{ background: WHITE, borderRadius: 16, marginBottom: 10, boxShadow: SHADOW_SOFT, padding: "12px 14px 8px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <span style={{ width: 24, height: 24, borderRadius: 8, background: TEAL, color: WHITE, display: "grid", placeItems: "center", fontSize: 12, fontWeight: 800 }}>{letter}</span>
+        <span style={{ fontWeight: 700, fontSize: 14, color: INK }}>{title}</span>
+        {hint && <span style={{ fontSize: 11, color: FAINT, marginLeft: "auto" }}>{hint}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// Progressive-disclosure toggle for the rarely-used fields. Shows a filled count
+// so a continued draft's hidden-but-filled sections are obvious.
+function More({ label, open, onToggle, count = 0, children }) {
+  return (
+    <>
+      <button type="button" onClick={onToggle} style={{ width: "100%", background: "none", border: "none", padding: "6px 2px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", color: TEAL, fontWeight: 700, fontSize: 12.5, fontFamily: "inherit" }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <Plus size={14} /> {label}
+          {count > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: WHITE, background: TEAL, borderRadius: 999, padding: "1px 7px" }}>{count}</span>}
+        </span>
+        {open ? <ChevronUp size={15} color={MUTE} /> : <ChevronDown size={15} color={MUTE} />}
+      </button>
+      {open && <div style={{ paddingTop: 4 }}>{children}</div>}
+    </>
+  );
+}
+
+// Chart-first snapshot shown at the top of the editor (B): allergy, last visit, last vitals.
+function NoteSnapshot({ allergy, lastVisit, lastVitals }) {
+  const v = lastVitals || {};
+  const hasVitals = v.blood_pressure_systolic || v.pulse_rate || v.temperature || v.oxygen_saturation;
+  if (!allergy && !lastVisit && !hasVitals) return null;
+  const Tile = ({ label, value, bad }) => (
+    <div style={{ flex: 1, minWidth: 64, background: WHITE, border: "1px solid #e5e7eb", borderRadius: 10, padding: "6px 4px", textAlign: "center" }}>
+      <div style={{ fontSize: 14, fontWeight: 800, color: bad ? RED : INK }}>{value}{bad ? " ▲" : ""}</div>
+      <div style={{ fontSize: 9, fontWeight: 700, color: FAINT, textTransform: "uppercase", letterSpacing: ".4px" }}>{label}</div>
+    </div>
+  );
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <AllergyBanner text={allergy} />
+      {lastVisit && (
+        <div style={{ background: WHITE, borderRadius: 12, padding: "8px 11px", marginBottom: 8, boxShadow: SHADOW_SOFT }}>
+          <div style={{ fontSize: 10.5, fontWeight: 700, color: FAINT, textTransform: "uppercase", letterSpacing: ".5px" }}>Last visit · {fmtDate(lastVisit.date)}</div>
+          <div style={{ fontSize: 13, color: INK, marginTop: 1 }}>{lastVisit.diagnosis || lastVisit.chief_complaint || "—"}</div>
+        </div>
+      )}
+      {hasVitals && (
+        <div style={{ display: "flex", gap: 6 }}>
+          {v.blood_pressure_systolic ? <Tile label="BP" value={`${v.blood_pressure_systolic}/${v.blood_pressure_diastolic}`} bad={isAbnormal("blood_pressure_systolic", v.blood_pressure_systolic) || isAbnormal("blood_pressure_diastolic", v.blood_pressure_diastolic)} /> : null}
+          {v.pulse_rate ? <Tile label="Pulse" value={v.pulse_rate} bad={isAbnormal("pulse_rate", v.pulse_rate)} /> : null}
+          {v.temperature ? <Tile label="Temp" value={`${v.temperature}°`} bad={isAbnormal("temperature", v.temperature)} /> : null}
+          {v.oxygen_saturation ? <Tile label="SpO₂" value={`${v.oxygen_saturation}%`} bad={isAbnormal("oxygen_saturation", v.oxygen_saturation)} /> : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Tappable phrase chips that append to a field.
+function ChipRow({ options, onPick }) {
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "2px 0 12px" }}>
+      {options.map((o) => (
+        <button key={o} type="button" onClick={() => onPick(o)} style={{ fontSize: 11.5, fontWeight: 600, padding: "5px 10px", borderRadius: 999, background: SUBTLE, color: MUTE, border: "1px solid #e5e7eb", cursor: "pointer", fontFamily: "inherit" }}>+ {o}</button>
+      ))}
+    </div>
+  );
+}
+
+function NoteEditor({ visitId, note, canPrivate, knownAllergy, lastVisit, lastVitals, onClose, onSaved }) {
   const [f, setF] = useState(() => ({ ...(note || {}) }));
   const [noteId, setNoteId] = useState(note?.id || null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [savedAt, setSavedAt] = useState(null);
   const set = (k) => (v) => setF((p) => ({ ...p, [k]: v }));
+  const str = (x) => String(x ?? "").trim();
+  const filled = (keys) => keys.filter((k) => str(f[k])).length;
+  const PLAN_MORE = ["investigations_ordered", "referral", "referral_reason", "follow_up_instructions", "follow_up_date"];
+  // Open any section that a continued draft has already filled, so nothing hides behind "+ Add".
+  const [expanded, setExpanded] = useState(() => {
+    const n = note || {};
+    return {
+      s: SUBJECTIVE_MORE.some(([k]) => str(n[k])),
+      o: EXAM_FIELDS.some(([k]) => str(n[k])),
+      a: !!(str(n.differential_diagnoses) || str(n.icd_code)),
+      p: PLAN_MORE.some((k) => str(n[k])),
+      priv: !!str(n.doctor_private_notes),
+    };
+  });
+  const tog = (k) => setExpanded((e) => ({ ...e, [k]: !e[k] }));
+  const addChip = (field, word) => setF((p) => {
+    const cur = String(p[field] || "").trim();
+    const parts = cur ? cur.split(/,\s*/) : [];
+    if (parts.some((x) => x.toLowerCase() === word.toLowerCase())) return p; // no duplicates
+    return { ...p, [field]: cur ? `${cur}, ${word}` : word };
+  });
 
   const payload = () => {
     const body = {};
@@ -261,31 +364,54 @@ function NoteEditor({ visitId, note, canPrivate, onClose, onSaved }) {
   return (
     <Overlay title={noteId ? "Clinical note (draft)" : "New clinical note"} onClose={onClose}>
       <Err message={error} />
-      {TEXT_GROUPS.slice(0, 1).map((g) => (
-        <Group key={g.title} title={g.title} open={g.open}>
-          {g.fields.map(([k, label, rows]) => <Fld key={k} label={label}><Txt value={f[k]} onChange={set(k)} rows={rows} /></Fld>)}
-        </Group>
-      ))}
-      <Group title="Vitals" open>
+      <NoteSnapshot allergy={knownAllergy} lastVisit={lastVisit} lastVitals={lastVitals} />
+
+      <SoapSection letter="S" title="Subjective">
+        <Fld label="Chief complaint *"><Txt value={f.chief_complaint} onChange={set("chief_complaint")} rows={2} placeholder="Why the patient came in" /></Fld>
+        <ChipRow options={COMPLAINT_CHIPS} onPick={(w) => addChip("chief_complaint", w)} />
+        <More label="Add history & review of systems" open={!!expanded.s} onToggle={() => tog("s")} count={filled(SUBJECTIVE_MORE.map((x) => x[0]))}>
+          {SUBJECTIVE_MORE.map(([k, label, rows]) => <Fld key={k} label={label}><Txt value={f[k]} onChange={set(k)} rows={rows} /></Fld>)}
+        </More>
+      </SoapSection>
+
+      <SoapSection letter="O" title="Objective" hint="vitals · red = out of range">
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 10px" }}>
-          {VITAL_FIELDS.map(([k, label]) => <Fld key={k} label={label}><Num value={f[k]} onChange={set(k)} /></Fld>)}
+          {VITAL_FIELDS.map(([k, label]) => <Fld key={k} label={label}><Num value={f[k]} onChange={set(k)} abnormal={isAbnormal(k, f[k])} /></Fld>)}
         </div>
-      </Group>
-      {TEXT_GROUPS.slice(1).map((g) => (
-        <Group key={g.title} title={g.title} open={g.open}>
-          {g.fields.map(([k, label, rows]) => <Fld key={k} label={label}><Txt value={f[k]} onChange={set(k)} rows={rows} /></Fld>)}
-          {g.title === "Assessment & plan" && (
-            <Fld label="Follow-up date">
-              <input type="date" value={f.follow_up_date ? String(f.follow_up_date).slice(0, 10) : ""} onChange={(e) => set("follow_up_date")(e.target.value)} style={inputStyle} />
-            </Fld>
-          )}
-        </Group>
-      ))}
+        <More label="Add examination findings" open={!!expanded.o} onToggle={() => tog("o")} count={filled(EXAM_FIELDS.map((x) => x[0]))}>
+          {EXAM_FIELDS.map(([k, label, rows]) => <Fld key={k} label={label}><Txt value={f[k]} onChange={set(k)} rows={rows} /></Fld>)}
+        </More>
+      </SoapSection>
+
+      <SoapSection letter="A" title="Assessment">
+        <Fld label="Diagnosis *"><Txt value={f.diagnosis} onChange={set("diagnosis")} rows={2} placeholder="Working diagnosis" /></Fld>
+        <More label="Add differentials & ICD code" open={!!expanded.a} onToggle={() => tog("a")} count={filled(["differential_diagnoses", "icd_code"])}>
+          <Fld label="Differential diagnoses"><Txt value={f.differential_diagnoses} onChange={set("differential_diagnoses")} rows={2} /></Fld>
+          <Fld label="ICD code"><Txt value={f.icd_code} onChange={set("icd_code")} rows={1} /></Fld>
+        </More>
+      </SoapSection>
+
+      <SoapSection letter="P" title="Plan">
+        <Fld label="Treatment plan *"><Txt value={f.treatment_plan} onChange={set("treatment_plan")} rows={3} placeholder="Medications, procedures, advice" /></Fld>
+        <More label="Add orders, referral & follow-up" open={!!expanded.p} onToggle={() => tog("p")} count={filled(PLAN_MORE)}>
+          <Fld label="Investigations ordered"><Txt value={f.investigations_ordered} onChange={set("investigations_ordered")} rows={2} /></Fld>
+          <Fld label="Referral (to whom / where)"><Txt value={f.referral} onChange={set("referral")} rows={1} /></Fld>
+          <Fld label="Referral reason"><Txt value={f.referral_reason} onChange={set("referral_reason")} rows={2} /></Fld>
+          <Fld label="Follow-up instructions"><Txt value={f.follow_up_instructions} onChange={set("follow_up_instructions")} rows={2} /></Fld>
+          <Fld label="Follow-up date">
+            <input type="date" value={f.follow_up_date ? String(f.follow_up_date).slice(0, 10) : ""} onChange={(e) => set("follow_up_date")(e.target.value)} style={inputStyle} />
+          </Fld>
+        </More>
+      </SoapSection>
+
       {canPrivate && (
-        <Group title="Doctor's private notes (only doctors can see)">
-          <Fld label="Private notes"><Txt value={f.doctor_private_notes} onChange={set("doctor_private_notes")} rows={3} /></Fld>
-        </Group>
+        <div style={{ background: WHITE, borderRadius: 16, marginBottom: 10, boxShadow: SHADOW_SOFT, padding: "6px 14px" }}>
+          <More label="Doctor's private notes (only doctors can see)" open={!!expanded.priv} onToggle={() => tog("priv")} count={filled(["doctor_private_notes"])}>
+            <Fld label="Private notes"><Txt value={f.doctor_private_notes} onChange={set("doctor_private_notes")} rows={3} /></Fld>
+          </More>
+        </div>
       )}
+
       <div style={{ fontSize: 11.5, color: FAINT, margin: "4px 0 10px", lineHeight: 1.5 }}>
         Fields marked * are required to complete. A completed note is locked and cannot be edited. {savedAt ? `Draft saved ${savedAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}.` : ""}
       </div>
@@ -402,6 +528,8 @@ export function ClinicalSection({ visitId, visitOpen, user, patientId }) {
   const [vitalsOpen, setVitalsOpen] = useState(false);
   const [vitalsMsg, setVitalsMsg] = useState("");
   const [histAllergy, setHistAllergy] = useState("");
+  const [lastVisit, setLastVisit] = useState(null);
+  const [lastVitals, setLastVitals] = useState(null);
 
   const load = useCallback(async () => {
     if (!canViewClinical(role)) return; // don't even ask the server (it would refuse)
@@ -409,12 +537,15 @@ export function ClinicalSection({ visitId, visitOpen, user, patientId }) {
     catch (e) { setError(e.message); setNotes([]); }
   }, [visitId, role]);
   useEffect(() => { load(); }, [load]);
-  // Allergies from this patient's earlier completed visits (so the warning shows before a new note exists).
+  // Snapshot context for the editor: allergies, last completed visit, latest vitals.
   useEffect(() => {
     if (!patientId || !canViewClinical(role)) return;
     let live = true;
     api.get(`/api/patients/${patientId}/clinical-history`)
-      .then((r) => { if (live) setHistAllergy((r.find((x) => x.allergies && String(x.allergies).trim()) || {}).allergies || ""); })
+      .then((r) => { if (live) { setHistAllergy((r.find((x) => x.allergies && String(x.allergies).trim()) || {}).allergies || ""); setLastVisit(r[0] || null); } })
+      .catch(() => {});
+    api.get(`/api/patients/${patientId}/vitals-history`)
+      .then((r) => { if (live) setLastVitals((r || [])[0] || null); })
       .catch(() => {});
     return () => { live = false; };
   }, [patientId, role]);
@@ -461,7 +592,7 @@ export function ClinicalSection({ visitId, visitOpen, user, patientId }) {
       {!visitOpen && canWrite && <div style={{ fontSize: 11.5, color: FAINT, marginTop: 8 }}>This visit is closed, so new notes can't be added.</div>}
 
       {vitalsOpen && <VitalsSheet visitId={visitId} onClose={() => setVitalsOpen(false)} onSaved={() => setVitalsMsg("Vitals saved.")} />}
-      {editor && <NoteEditor visitId={visitId} note={editor.note} canPrivate={role === "Doctor" || role === "Super Admin"} onClose={() => { setEditor(null); load(); }} onSaved={load} />}
+      {editor && <NoteEditor visitId={visitId} note={editor.note} canPrivate={role === "Doctor" || role === "Super Admin"} knownAllergy={((notes || []).find((n) => n.allergies && String(n.allergies).trim()) || {}).allergies || histAllergy} lastVisit={lastVisit} lastVitals={lastVitals} onClose={() => { setEditor(null); load(); }} onSaved={load} />}
       {viewing && <NoteView visitId={visitId} note={viewing} user={user} onClose={() => setViewing(null)} />}
     </div>
   );
