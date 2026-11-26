@@ -10,7 +10,7 @@ import {
   Banknote, Link2, AlertOctagon, Tag, WifiOff, ArrowDownToLine,
   Type, Contrast, LayoutList
 } from "lucide-react";
-import { api, getToken, setToken, postForBlob } from "./api";
+import { api, getToken, setToken, postForBlob, noteSignedOut } from "./api";
 import { getA11y, setA11y, applyA11y } from "./utils/a11y.js";
 import { haptic } from "./lib/haptics";
 import { useTapLock, TapButton, Spinner, showSaved } from "./lib/tapLock";
@@ -768,7 +768,7 @@ function CreateAdminScreen({ onDone }) {
         <PrimaryButton onClick={submit} color={RED} disabled={busy}><ShieldCheck size={15} /> {busy ? "Creating..." : "Create Admin account"}</PrimaryButton>
         <div style={{ fontSize: 11, color: FAINT, marginTop: 14, lineHeight: 1.5 }}>
           As Admin, you'll be the only one who can see total revenue figures, manage staff accounts,
-          set service prices, and delete transactions \u2014 everyone else can still log activity.
+          set service prices, and delete transactions — everyone else can still log activity.
         </div>
       </div>
     </div>
@@ -860,7 +860,7 @@ function ConnectionError({ onRetry }) {
         <div style={{ fontWeight: 800, fontSize: 16, color: INK, marginBottom: 6 }}>Can't reach the server</div>
         <div style={{ fontSize: 13, color: MUTE, marginBottom: 16, lineHeight: 1.5 }}>
           Check your internet connection. If this is the first request in a while, the free server
-          may just be waking up \u2014 this can take up to a minute.
+          may just be waking up — this can take up to a minute.
         </div>
         <PrimaryButton onClick={onRetry} color={RED}>Try again</PrimaryButton>
       </div>
@@ -1003,7 +1003,7 @@ function StaffCredentials({ staffId, staffRole, currentUser }) {
         headers: { Authorization: `Bearer ${token}` },
         body: fd,
       });
-      if (!res.ok) { const j = await res.json(); throw new Error(j.error || "Upload failed"); }
+      if (!res.ok) { const j = await res.json(); noteSignedOut(j, token); throw new Error(j.error || "Upload failed"); }
       setShowUpload(false); setFile(null); setForm({ documentType: "practice_license", licenseNumber: "", issuingBody: "", issueDate: "", expiryDate: "" });
       await refresh();
     } catch (e) { setError(e.message); }
@@ -1136,6 +1136,7 @@ function ManageUsers({ staffCol, currentUser, onClose, locations = [] }) {
   };
 
   const toggleActive = async (u) => {
+    if (u.active && !window.confirm(`Deactivate "${u.name}"'s account? They'll be signed out straight away, and any unsaved work on their screen will be lost. You can reactivate the account later.`)) return;
     try { await update(u.id, { active: !u.active }); }
     catch (e) { setError(e.message); }
   };
@@ -1147,8 +1148,9 @@ function ManageUsers({ staffCol, currentUser, onClose, locations = [] }) {
   };
 
   const deleteAccount = async (u) => {
-    if (!window.confirm(`Permanently delete "${u.name}"'s account? Their activity history is kept, but they'll no longer be able to sign in.`)) return;
-    try { await remove(u.id); setEditing(null); }
+    if (!window.confirm(`Delete "${u.name}"'s account? They'll be removed from the staff list and won't be able to sign in again. Records of their past work are kept. You can't undo this in the app.`)) return;
+    setError("");
+    try { await remove(u.id); setEditing(null); showSaved("Account deleted"); }
     catch (e) { setError(e.message); }
   };
 
@@ -1191,7 +1193,11 @@ function ManageUsers({ staffCol, currentUser, onClose, locations = [] }) {
               <div style={{ fontSize: 11.5, color: FAINT, textAlign: "center", marginTop: 4 }}>This is the only active Admin-tier account, so it can't be deactivated.</div>
             )}
             {currentUser.role === "Super Admin" && existing.role !== "Super Admin" && (
-              <GhostButton color={RED} onClick={() => deleteAccount(existing)}><Trash2 size={14} /> Delete account</GhostButton>
+              <>
+                <GhostButton color={RED} onClick={() => deleteAccount(existing)}><Trash2 size={14} /> Delete account</GhostButton>
+                {/* Repeated here: the banner at the top is off screen by the time you reach this button. */}
+                <ErrorBanner message={error} />
+              </>
             )}
             <StaffCredentials staffId={existing.id} staffRole={existing.role} currentUser={currentUser} />
           </>
@@ -1260,7 +1266,7 @@ function InvestigationRecipeEditor({ service, inventory, onMutate }) {
 
   return (
     <Field label="Consumables used (deducted from stock per investigation run)">
-      {loaded && recipes.length === 0 && <div style={{ fontSize: 12, color: FAINT, marginBottom: 8 }}>No consumables linked yet \u2014 this investigation won't deduct any stock.</div>}
+      {loaded && recipes.length === 0 && <div style={{ fontSize: 12, color: FAINT, marginBottom: 8 }}>No consumables linked yet — this investigation won't deduct any stock.</div>}
       {recipes.map((r) => (
         <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: `1px solid #F1F4F6` }}>
           <div style={{ flex: 1, fontSize: 13 }}>{r.inventory_item_name}</div>
@@ -1316,7 +1322,7 @@ function ManageServices({ servicesCol, inventoryCol, onClose }) {
         <ErrorBanner message={error} />
         <Field label="Service / fee name"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. General Consultation" /></Field>
         <Field label="Category"><Select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} options={SERVICE_CATEGORIES} /></Field>
-        <Field label="Price (\u20a6)"><Input type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="0" /></Field>
+        <Field label="Price (₦)"><Input type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="0" /></Field>
 
         {isInvestigation && (
           <>
@@ -1324,7 +1330,7 @@ function ManageServices({ servicesCol, inventoryCol, onClose }) {
               <input type="checkbox" checked={!!form.is_outsourced} onChange={(e) => setForm({ ...form, is_outsourced: e.target.checked })} /> Outsourced to an external lab
             </label>
             {form.is_outsourced ? (
-              <Field label="External cost (\u20a6, what the clinic pays the lab \u2014 not billed to the patient)">
+              <Field label="External cost (₦, what the clinic pays the lab — not billed to the patient)">
                 <Input type="number" value={form.external_cost} onChange={(e) => setForm({ ...form, external_cost: e.target.value })} placeholder="0" />
               </Field>
             ) : existing ? (
@@ -1532,7 +1538,7 @@ function SettingsSheet({ onClose, currentUser, staffCol, locations, onLocationsR
           auditCol.data.map((e, i) => (
             <div key={e.id || i} style={{ padding: "8px 0", borderTop: "1px solid #F1F4F6" }}>
               <div style={{ fontSize: 13, fontWeight: 600 }}>{e.action}</div>
-              <div style={{ fontSize: 11, color: FAINT }}>{e.by_name || "Unknown"}{e.by_role ? ` (${e.by_role})` : ""} \u00b7 {fmtDateTime(e.at)}</div>
+              <div style={{ fontSize: 11, color: FAINT }}>{e.by_name || "Unknown"}{e.by_role ? ` (${e.by_role})` : ""} · {fmtDateTime(e.at)}</div>
             </div>
           ))
         )}
@@ -1767,7 +1773,7 @@ function RestockSheet({ item, restocksCol, onClose }) {
     <Sheet title={`Restock ${item.name}`} onClose={onClose}>
       <div style={{ fontSize: 12.5, color: MUTE, marginBottom: 10 }}>Current stock: {item.quantity} {item.unit}</div>
       <Field label={`Quantity received (${item.unit})`}><Input type="number" value={qty} onChange={(e) => { setQty(e.target.value); setError(""); }} placeholder="0" autoFocus /></Field>
-      <Field label="Unit cost (\u20a6, optional)"><Input type="number" value={unitCost} onChange={(e) => setUnitCost(e.target.value)} placeholder="0" /></Field>
+      <Field label="Unit cost (₦, optional)"><Input type="number" value={unitCost} onChange={(e) => setUnitCost(e.target.value)} placeholder="0" /></Field>
       <Field label="Supplier (optional)"><Input value={supplier} onChange={(e) => setSupplier(e.target.value)} placeholder="e.g. MedPlus Distributors" /></Field>
       {error && <div style={{ color: RED, fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>{error}</div>}
       <PrimaryButton onClick={submit} color={TEAL} disabled={busy}><PackagePlus size={16} /> {busy ? "Saving..." : "Confirm restock"}</PrimaryButton>
@@ -1907,7 +1913,7 @@ function Inventory({ inventoryCol, restocksCol, currentUser, summary }) {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 14.5 }}>{item.name}</div>
-                    <div style={{ fontSize: 12, color: FAINT, marginTop: 2 }}>{item.category} \u00b7 updated {fmtDate(item.updated_at)}</div>
+                    <div style={{ fontSize: 12, color: FAINT, marginTop: 2 }}>{item.category} · updated {fmtDate(item.updated_at)}</div>
                     {item.sellable_online && <div style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10.5, fontWeight: 700, color: TEAL, background: "#E7F5F5", padding: "2px 7px", borderRadius: 6, marginTop: 4 }}>Online{item.requires_prescription ? " \u00b7 Rx" : ""}</div>}
                     {(expired || expiringSoon) && <div style={{ fontSize: 11, color: RED, fontWeight: 700, marginTop: 3, display: "flex", alignItems: "center", gap: 4 }}><AlertOctagon size={11} /> {expired ? "Expired" : `Expires in ${exp}d`}</div>}
                   </div>
@@ -1935,8 +1941,8 @@ function Inventory({ inventoryCol, restocksCol, currentUser, summary }) {
           <Field label="Reorder level (alert when at/below this)"><Input type="number" value={form.reorderLevel} onChange={(e) => setForm({ ...form, reorderLevel: e.target.value })} placeholder="e.g. 10" /></Field>
           <Field label="Expiry date (optional)"><Input type="date" value={form.expiryDate} onChange={(e) => setForm({ ...form, expiryDate: e.target.value })} /></Field>
           <div style={{ display: "flex", gap: 10 }}>
-            <Field label="Cost price (\u20a6)" style={{ flex: 1 }}><Input type="number" value={form.costPrice} onChange={(e) => setForm({ ...form, costPrice: e.target.value })} placeholder="0" /></Field>
-            <Field label="Selling price (\u20a6)" style={{ flex: 1 }}><Input type="number" value={form.sellingPrice} onChange={(e) => setForm({ ...form, sellingPrice: e.target.value })} placeholder="0" /></Field>
+            <Field label="Cost price (₦)" style={{ flex: 1 }}><Input type="number" value={form.costPrice} onChange={(e) => setForm({ ...form, costPrice: e.target.value })} placeholder="0" /></Field>
+            <Field label="Selling price (₦)" style={{ flex: 1 }}><Input type="number" value={form.sellingPrice} onChange={(e) => setForm({ ...form, sellingPrice: e.target.value })} placeholder="0" /></Field>
           </div>
           <div style={{ marginBottom: 12, padding: "8px 12px", background: "#F7F9FA", borderRadius: 12, border: `1px solid ${LINE}` }}>
             <div style={{ fontSize: 11.5, fontWeight: 700, color: TEAL, letterSpacing: 0.4 }}>ONLINE PHARMACY</div>
@@ -1990,7 +1996,7 @@ function CashReconciliationSheet({ reconciliationsCol, onClose }) {
                 <div style={{ fontWeight: 700, fontSize: 13.5 }}>{fmtDate(r.date)}</div>
                 <div style={{ fontWeight: 700, fontSize: 13.5, color: Number(r.difference) === 0 ? TEAL : RED }}>{Number(r.difference) > 0 ? "+" : ""}{fmtNaira(r.difference)}</div>
               </div>
-              <div style={{ fontSize: 12, color: MUTE }}>Expected {fmtNaira(r.expected_revenue)} \u00b7 Counted {fmtNaira(r.actual_cash)} \u00b7 {r.recorded_by_name}</div>
+              <div style={{ fontSize: 12, color: MUTE }}>Expected {fmtNaira(r.expected_revenue)} · Counted {fmtNaira(r.actual_cash)} · {r.recorded_by_name}</div>
               {r.note && <div style={{ fontSize: 12, color: FAINT, marginTop: 2 }}>{r.note}</div>}
             </div>
           ))
@@ -2016,7 +2022,7 @@ function CashReconciliationSheet({ reconciliationsCol, onClose }) {
         </>
       ) : (
         <>
-          <Field label="Actual cash counted (\u20a6)"><Input type="number" value={actualCash} onChange={(e) => setActualCash(e.target.value)} placeholder="0" autoFocus /></Field>
+          <Field label="Actual cash counted (₦)"><Input type="number" value={actualCash} onChange={(e) => setActualCash(e.target.value)} placeholder="0" autoFocus /></Field>
           <Field label="Note (optional)"><TextArea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Any explanation for the difference" /></Field>
           <PrimaryButton onClick={save} color={RED} disabled={actualCash === "" || busy}><Banknote size={16} /> {busy ? "Saving..." : "Save reconciliation"}</PrimaryButton>
           <GhostButton onClick={() => setShowHistory(true)}><History size={14} /> View history</GhostButton>
@@ -2140,18 +2146,18 @@ function Finance({ transactionsCol, patientsCol, servicesCol, reconciliationsCol
             <Field label="Quick-fill from price list">
               <select defaultValue="" onChange={(e) => { const s = matchingServices.find((x) => x.id === e.target.value); if (s) setForm({ ...form, amount: s.price, note: s.name }); }} style={inputStyle}>
                 <option value="">Choose a standard fee...</option>
-                {matchingServices.map((s) => <option key={s.id} value={s.id}>{s.name} \u2014 {fmtNaira(s.price)}</option>)}
+                {matchingServices.map((s) => <option key={s.id} value={s.id}>{s.name} — {fmtNaira(s.price)}</option>)}
               </select>
             </Field>
           )}
-          <Field label="Amount (\u20a6)"><Input type="number" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder="0" /></Field>
+          <Field label="Amount (₦)"><Input type="number" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder="0" /></Field>
           <Field label="Date"><Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
           {form.type === "revenue" && (
             <Field label="Link to patient folder (optional)">
               {linkedPatient ? (
                 <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#FDEAEA", borderRadius: 10, padding: "9px 12px" }}>
                   <Link2 size={14} color={RED} />
-                  <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{linkedPatient.name} <span style={{ color: FAINT, fontWeight: 500 }}>\u00b7 HN {linkedPatient.hospital_number}</span></div>
+                  <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{linkedPatient.name} <span style={{ color: FAINT, fontWeight: 500 }}>· HN {linkedPatient.hospital_number}</span></div>
                   <button onClick={() => setLinkedPatient(null)} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={14} color={MUTE} /></button>
                 </div>
               ) : (
@@ -3126,7 +3132,7 @@ function Report({ currentUser, ready }) {
         </Card>
       )}
 
-      <div style={{ textAlign: "center", fontSize: 11.5, color: FAINT, marginTop: 4 }}>Generated on {fmtDate(todayISO())} \u00b7 Clinigram Facility Manager</div>
+      <div style={{ textAlign: "center", fontSize: 11.5, color: FAINT, marginTop: 4 }}>Generated on {fmtDate(todayISO())} · Clinigram Facility Manager</div>
     </div>
   );
 }
@@ -3151,6 +3157,35 @@ export default function App() {
   useThemeColor("#f2f4f8");
   const [currentUser, setCurrentUser] = useState(null);
   const [checkingSession, setCheckingSession] = useState(true);
+
+  // The server refused this sign-in (account deactivated or deleted, or session expired):
+  // go back to the sign-in list and say why. Declared before the resume effect so it hears that too.
+  const [signedOutNotice, setSignedOutNotice] = useState("");
+  useEffect(() => {
+    const onSignedOut = (e) => {
+      _cache.clear();
+      setSignedOutNotice(e.detail || "You've been signed out.");
+      setCurrentUser(null); setTab("dashboard"); setShowSettings(false);
+    };
+    window.addEventListener("fm:signed-out", onSignedOut);
+    return () => window.removeEventListener("fm:signed-out", onSignedOut);
+  }, []);
+
+  // A screen nobody is touching sends nothing, so ask now and then whether this sign-in still stands.
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    const check = () => {
+      if (document.visibilityState === "visible") api.get("/api/auth/me").catch(() => { /* offline: try later */ });
+    };
+    const timer = setInterval(check, 30000);
+    window.addEventListener("focus", check);
+    document.addEventListener("visibilitychange", check);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("focus", check);
+      document.removeEventListener("visibilitychange", check);
+    };
+  }, [currentUser?.id]);
 
   // Resume session if a token is already stored
   useEffect(() => {
@@ -3200,7 +3235,7 @@ export default function App() {
     visitsCol.refresh(); auditCol.refresh(); refreshSummary();
   };
 
-  const handleLogin = (user) => setCurrentUser(user);
+  const handleLogin = (user) => { setSignedOutNotice(""); setCurrentUser(user); };
   const handleLogout = useCallback(async () => {
     try { await api.post("/api/auth/logout", {}); } catch { /* best-effort */ }
     setToken(null); setCurrentUser(null); setTab("dashboard");
@@ -3214,7 +3249,14 @@ export default function App() {
   }
 
   if (!currentUser) {
-    return <Shell><AuthGate onLogin={handleLogin} /></Shell>;
+    return (
+      <Shell>
+        {signedOutNotice && (
+          <div role="alert" onClick={() => setSignedOutNotice("")} style={{ position: "fixed", top: "calc(env(safe-area-inset-top, 0px) + 10px)", left: 16, right: 16, maxWidth: 420, margin: "0 auto", zIndex: 1000, background: WHITE, color: INK, borderRadius: 12, padding: "11px 14px", fontSize: 13, fontWeight: 600, textAlign: "center", boxShadow: "0 8px 24px rgba(0,0,0,0.25)" }}>{signedOutNotice}</div>
+        )}
+        <AuthGate onLogin={handleLogin} />
+      </Shell>
+    );
   }
 
   return (

@@ -9,6 +9,15 @@ export function setToken(token) {
   else localStorage.removeItem(TOKEN_KEY);
 }
 
+// The server marks a refusal with signedOut when this sign-in is no longer good (account
+// deactivated or deleted, or session expired). A wrong PIN is not marked. The token comparison
+// means this fires once, and a late reply for an old sign-in can't sign out a newer one.
+export function noteSignedOut(data, token) {
+  if (!data?.signedOut || !token || getToken() !== token) return;
+  setToken(null);
+  window.dispatchEvent(new CustomEvent("fm:signed-out", { detail: data.error }));
+}
+
 // Safety net: if the exact same save is already on its way, don't send it a second time.
 const pendingWrites = new Map();
 
@@ -36,6 +45,7 @@ async function send(method, path, body) {
   try { data = await res.json(); } catch (e) { /* empty body */ }
 
   if (!res.ok) {
+    noteSignedOut(data, token);
     const message = (data && data.error) || `Request failed (${res.status})`;
     const err = new Error(message);
     err.status = res.status;
@@ -64,7 +74,7 @@ export async function postForBlob(path, body) {
 
   if (!res.ok) {
     let message = `Request failed (${res.status})`;
-    try { const data = await res.json(); message = data.error || message; } catch (e) { /* empty body */ }
+    try { const data = await res.json(); noteSignedOut(data, token); message = data.error || message; } catch (e) { /* empty body */ }
     const err = new Error(message);
     err.status = res.status;
     throw err;
