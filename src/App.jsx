@@ -57,6 +57,12 @@ const SERVICE_CATEGORIES = ["Consultation", "Folder Opening", "Procedure", "Inve
 const UNITS = ["tablets", "vials", "bottles", "packs", "boxes", "units", "ampoules", "sachets"];
 const ROLE_OPTIONS = ["Admin", "Pharmacist", "Front Desk", "Accounts", "Lab Scientist", "Nurse", "Doctor", "Paramedic", "HR", "Other"];
 const isAdminTier = (role) => role === "Admin" || role === "Super Admin";
+// Duty roster: shifts, and weekdays keyed to JS Date.getDay() (0=Sun), shown Mon-first.
+const SHIFTS = ["Morning", "Afternoon", "Night"];
+const WEEKDAYS = [
+  { n: 1, label: "Mon" }, { n: 2, label: "Tue" }, { n: 3, label: "Wed" },
+  { n: 4, label: "Thu" }, { n: 5, label: "Fri" }, { n: 6, label: "Sat" }, { n: 0, label: "Sun" },
+];
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
@@ -1378,7 +1384,7 @@ function ManageServices({ servicesCol, inventoryCol, onClose }) {
 
 /* ----------------------------- Settings ----------------------------- */
 
-function SettingsSheet({ onClose, currentUser, staffCol, locations, onLocationsRefresh, servicesCol, inventoryCol, auditCol, onWipe, onLogout }) {
+function SettingsSheet({ onClose, currentUser, staffCol, rosterCol, locations, onLocationsRefresh, servicesCol, inventoryCol, auditCol, onWipe, onLogout }) {
   const [view, setView] = useState("main");
   const [oldPin, setOldPin] = useState("");
   const [newPin, setNewPin] = useState("");
@@ -1429,6 +1435,7 @@ function SettingsSheet({ onClose, currentUser, staffCol, locations, onLocationsR
 
   if (view === "manageUsers") return <ManageUsers staffCol={staffCol} currentUser={currentUser} onClose={onClose} locations={locations} />;
   if (view === "manageServices") return <ManageServices servicesCol={servicesCol} inventoryCol={inventoryCol} onClose={onClose} />;
+  if (view === "manageRoster") return <ManageRoster rosterCol={rosterCol} staffCol={staffCol} currentUser={currentUser} onClose={onClose} />;
 
   if (view === "manageBranches") {
     const addBranch = async () => {
@@ -1585,6 +1592,7 @@ function SettingsSheet({ onClose, currentUser, staffCol, locations, onLocationsR
       <SettingsRow icon={<KeyRound size={16} color={RED} />} label="Change my PIN" onClick={() => setView("pin")} />
       {isAdmin && <SettingsRow icon={<UserCog size={16} color={TEAL} />} label="Manage staff accounts" onClick={() => setView("manageUsers")} />}
       {isAdmin && <SettingsRow icon={<Tag size={16} color={TEAL} />} label="Manage price list" onClick={() => setView("manageServices")} />}
+      {isAdmin && <SettingsRow icon={<CalendarDays size={16} color={TEAL} />} label="Manage duty roster" onClick={() => setView("manageRoster")} />}
       {currentUser.role === "Super Admin" && <SettingsRow icon={<LayoutDashboard size={16} color={TEAL} />} label="Manage branches" onClick={() => setView("manageBranches")} />}
       <SettingsRow icon={<ShieldCheck size={16} color={TEAL} />} label="Privacy & NDPA notice" onClick={() => setView("privacy")} />
       {isAdmin && <SettingsRow icon={<ScrollText size={16} color={RED} />} label="Audit log" onClick={() => setView("audit")} />}
@@ -1675,11 +1683,13 @@ function AttendanceCard({ currentUser }) {
 
 /* ----------------------------- Dashboard ----------------------------- */
 
-function Dashboard({ inventoryCol, servicesCol, visitsCol, patientsCol, transactionsCol, summary, setTab, onSettings, currentUser, onMutate }) {
+function Dashboard({ inventoryCol, servicesCol, visitsCol, patientsCol, transactionsCol, staffCol, rosterCol, locations = [], summary, setTab, onSettings, currentUser, onMutate }) {
   const isAdmin = isAdminTier(currentUser.role);
   const canSeeDailyRevenue = isAdmin || currentUser.role === "Nurse";
   const [showLabReport, setShowLabReport] = useState(false);
   const [showMedicalReport, setShowMedicalReport] = useState(false);
+  const [showPriceList, setShowPriceList] = useState(false);
+  const [showRoster, setShowRoster] = useState(false);
   const transactions = transactionsCol?.data || [];
   const todayTx = transactions.filter((t) => t.date === todayISO());
   const todayRevenue = todayTx.filter((t) => t.type === "revenue").reduce((s, t) => s + Number(t.amount), 0);
@@ -1693,6 +1703,8 @@ function Dashboard({ inventoryCol, servicesCol, visitsCol, patientsCol, transact
     <div style={{ padding: "0 16px calc(96px + env(safe-area-inset-bottom, 0px))" }}>
       {showLabReport && <LabReportSheet onClose={() => setShowLabReport(false)} />}
       {showMedicalReport && <MedicalReportSheet onClose={() => setShowMedicalReport(false)} />}
+      {showPriceList && <PriceListViewSheet services={servicesCol?.data || []} onClose={() => setShowPriceList(false)} />}
+      {showRoster && <StaffRosterViewSheet roster={rosterCol?.data || []} onClose={() => setShowRoster(false)} />}
       <TopBar title={`Good day, ${currentUser.name.split(" ")[0]}`} subtitle={`${currentUser.role} \u00b7 ${summary ? summary.label : ""}`} onSettings={onSettings} />
       <div style={{ display: "flex", gap: 10, marginTop: 8, marginBottom: 8 }}>
         {isAdmin
@@ -1730,22 +1742,183 @@ function Dashboard({ inventoryCol, servicesCol, visitsCol, patientsCol, transact
         <QuickAction icon={<FileText size={18} />} label="Lab report" onClick={() => { haptic(); setShowLabReport(true); }} tone="red" />
         <QuickAction icon={<ScrollText size={18} />} label="Medical report" onClick={() => { haptic(); setShowMedicalReport(true); }} tone="teal" />
       </div>
+      {/* Small view-only tiles — grid sized for up to five across */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8, marginTop: 10 }}>
+        <QuickAction small icon={<Tag size={16} />} label="Price list" onClick={() => { haptic(); setShowPriceList(true); }} tone="ink" />
+        <QuickAction small icon={<Users size={16} />} label="Staff roster" onClick={() => { haptic(); setShowRoster(true); }} tone="ink" />
+      </div>
     </div>
   );
 }
 
-function QuickAction({ icon, label, onClick, tone = "teal" }) {
+function QuickAction({ icon, label, onClick, tone = "teal", small = false }) {
   const chipColors = {
     teal: { bg: `${TEAL}1a`, color: TEAL },
     red: { bg: `${RED}18`, color: RED },
     ink: { bg: `${INK}12`, color: INK },
   };
   const chip = chipColors[tone] || chipColors.teal;
+  if (small) {
+    // Compact vertical tile — sized so up to five sit across one row.
+    return (
+      <button className="neu-press" onClick={onClick} style={{ background: SURFACE, border: "none", borderRadius: 14, padding: "10px 4px", display: "flex", flexDirection: "column", alignItems: "center", gap: 5, cursor: "pointer", boxShadow: SHADOW_SOFT, fontFamily: "inherit" }}>
+        <div style={{ width: 34, height: 34, borderRadius: 10, background: chip.bg, color: chip.color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{icon}</div>
+        <span style={{ fontSize: 10.5, fontWeight: 600, color: INK, lineHeight: 1.15, textAlign: "center" }}>{label}</span>
+      </button>
+    );
+  }
   return (
     <button className="neu-press" onClick={onClick} style={{ background: SURFACE, border: "none", borderRadius: 16, padding: "14px 12px", display: "flex", alignItems: "center", gap: 11, cursor: "pointer", textAlign: "left", boxShadow: SHADOW_SOFT, fontFamily: "inherit" }}>
       <div style={{ width: 36, height: 36, borderRadius: 11, background: chip.bg, color: chip.color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{icon}</div>
       <span style={{ fontSize: 13, fontWeight: 600, color: INK, lineHeight: 1.3 }}>{label}</span>
     </button>
+  );
+}
+
+/* ----------------------------- View-only reference sheets (Price list, Staff roster) ----------------------------- */
+
+// Read-only price list — active services grouped by category. Admins edit prices
+// via Settings → Manage price list; this is the at-a-glance view for all staff.
+function PriceListViewSheet({ services = [], onClose }) {
+  const active = services.filter((s) => s.active);
+  return (
+    <Sheet title="Price list" onClose={onClose}>
+      <div style={{ fontSize: 12.5, color: MUTE, marginBottom: 10 }}>Standard fees. View only — admins set prices in Settings.</div>
+      {SERVICE_CATEGORIES.map((cat) => {
+        const items = active.filter((s) => s.category === cat);
+        if (items.length === 0) return null;
+        return (
+          <div key={cat} style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: TEAL, marginBottom: 6 }}>{cat}</div>
+            {items.map((s) => (
+              <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: WHITE, border: `1px solid ${LINE}`, borderRadius: 12, padding: "10px 12px", marginBottom: 7 }}>
+                <span style={{ fontSize: 13.5, fontWeight: 600 }}>{s.name}</span>
+                <span style={{ fontSize: 13.5, fontWeight: 700, color: RED }}>{fmtNaira(s.price)}</span>
+              </div>
+            ))}
+          </div>
+        );
+      })}
+      {active.length === 0 && <EmptyState icon={<Tag size={36} />} text="No price list items yet" />}
+    </Sheet>
+  );
+}
+
+// Weekday selector shared by the roster view and editor. Today is marked with a dot.
+function WeekdayTabs({ day, setDay }) {
+  const today = new Date().getDay();
+  return (
+    <div className="no-scrollbar" style={{ display: "flex", gap: 4, marginBottom: 12, overflowX: "auto" }}>
+      {WEEKDAYS.map((w) => {
+        const active = w.n === day;
+        return (
+          <button key={w.n} onClick={() => setDay(w.n)} style={{
+            flex: "1 0 auto", minWidth: 40, padding: "7px 8px", borderRadius: 10, border: "none", cursor: "pointer",
+            fontFamily: "inherit", fontSize: 12, fontWeight: 700,
+            background: active ? RED : SURFACE, color: active ? WHITE : MUTE,
+            boxShadow: active ? "none" : SHADOW_SOFT,
+          }}>{w.label}{w.n === today ? " •" : ""}</button>
+        );
+      })}
+    </div>
+  );
+}
+
+// Read-only duty roster — who is on each shift. Defaults to today; browse the week.
+function StaffRosterViewSheet({ roster = [], onClose }) {
+  const [day, setDay] = useState(new Date().getDay());
+  const forShift = (shift) => roster.filter((r) => r.weekday === day && r.shift === shift);
+  const total = roster.filter((r) => r.weekday === day).length;
+  return (
+    <Sheet title="Duty roster" onClose={onClose}>
+      <div style={{ fontSize: 12.5, color: MUTE, marginBottom: 10 }}>Who is on duty. View only — admins edit it in Settings.</div>
+      <WeekdayTabs day={day} setDay={setDay} />
+      {SHIFTS.map((shift) => {
+        const people = forShift(shift);
+        return (
+          <div key={shift} style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: TEAL, marginBottom: 6 }}>{shift}</div>
+            {people.length === 0
+              ? <div style={{ fontSize: 12.5, color: FAINT, padding: "2px 2px 4px" }}>No one assigned</div>
+              : people.map((r) => (
+                <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, background: WHITE, border: `1px solid ${LINE}`, borderRadius: 12, padding: "9px 12px", marginBottom: 7 }}>
+                  <Avatar name={r.staff_name} role={r.staff_role} size={32} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13.5 }}>{r.staff_name}</div>
+                    {r.note && <div style={{ fontSize: 11, color: FAINT, marginTop: 1 }}>{r.note}</div>}
+                  </div>
+                  <RoleBadge role={r.staff_role} />
+                </div>
+              ))}
+          </div>
+        );
+      })}
+      {total === 0 && <EmptyState icon={<Users size={36} />} text="No one on duty this day" />}
+    </Sheet>
+  );
+}
+
+// Admin editor for the weekly duty roster — assign/remove staff per weekday + shift.
+function ManageRoster({ rosterCol, staffCol, currentUser, onClose }) {
+  const roster = rosterCol.data || [];
+  const staff = (staffCol.data || []).filter((u) => u.active);
+  const [day, setDay] = useState(new Date().getDay());
+  const [addShift, setAddShift] = useState(SHIFTS[0]);
+  const [addStaff, setAddStaff] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const forShift = (shift) => roster.filter((r) => r.weekday === day && r.shift === shift);
+  const assignedIds = new Set(roster.filter((r) => r.weekday === day && r.shift === addShift).map((r) => r.staff_id));
+  const available = staff.filter((u) => !assignedIds.has(u.id));
+
+  const add = async () => {
+    if (!addStaff) { setError("Choose a staff member"); return; }
+    setBusy(true); setError("");
+    try {
+      await rosterCol.create({ staffId: addStaff, weekday: day, shift: addShift, locationId: currentUser.location_id || undefined });
+      setAddStaff("");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(false); }
+  };
+
+  const removeOne = async (id) => { try { await rosterCol.remove(id); } catch (e) { setError(e.message); } };
+
+  return (
+    <Sheet title="Manage duty roster" onClose={onClose}>
+      <div style={{ fontSize: 12.5, color: MUTE, marginBottom: 10 }}>Set who works each shift. The pattern repeats every week.</div>
+      <WeekdayTabs day={day} setDay={setDay} />
+      <ErrorBanner message={error} />
+      {SHIFTS.map((shift) => {
+        const people = forShift(shift);
+        return (
+          <div key={shift} style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: TEAL, marginBottom: 6 }}>{shift}</div>
+            {people.length === 0 && <div style={{ fontSize: 12.5, color: FAINT, padding: "2px 2px 6px" }}>No one assigned</div>}
+            {people.map((r) => (
+              <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, background: WHITE, border: `1px solid ${LINE}`, borderRadius: 12, padding: "8px 10px 8px 12px", marginBottom: 7 }}>
+                <Avatar name={r.staff_name} role={r.staff_role} size={30} />
+                <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, fontSize: 13 }}>{r.staff_name}</div></div>
+                <button onClick={() => removeOne(r.id)} aria-label="Remove" style={{ background: `${RED}12`, color: RED, border: "none", borderRadius: 9, padding: 6, cursor: "pointer", display: "flex" }}><X size={15} /></button>
+              </div>
+            ))}
+          </div>
+        );
+      })}
+      <div style={{ marginTop: 6, padding: 12, background: "#F7F9FA", borderRadius: 12, border: `1px solid ${LINE}` }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: INK, marginBottom: 8 }}>Add to {WEEKDAYS.find((w) => w.n === day)?.label}</div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+          <select value={addShift} onChange={(e) => { setAddShift(e.target.value); setAddStaff(""); }} style={{ ...inputStyle, flex: "0 0 40%" }}>
+            {SHIFTS.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <select value={addStaff} onChange={(e) => setAddStaff(e.target.value)} style={{ ...inputStyle, flex: 1 }}>
+            <option value="">Select staff{"…"}</option>
+            {available.map((u) => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
+          </select>
+        </div>
+        <PrimaryButton color={TEAL} onClick={add} disabled={busy || !addStaff}><Plus size={16} /> Add to shift</PrimaryButton>
+      </div>
+    </Sheet>
   );
 }
 
@@ -3218,6 +3391,10 @@ export default function App() {
     : `/api/staff?location_id=${currentUser.location_id}`;
   const staffCol = useApiCollection(staffEndpoint, { enabled: ready });
   const locationsCol = useApiCollection("/api/locations", { enabled: ready });
+  const rosterEndpoint = !currentUser || currentUser.role === "Super Admin"
+    ? "/api/staff-roster"
+    : `/api/staff-roster?location_id=${currentUser.location_id}`;
+  const rosterCol = useApiCollection(rosterEndpoint, { enabled: ready });
 
   const { summary: weekSummary, refresh: refreshSummary } = useSummary("week", 0, ready);
 
@@ -3370,7 +3547,7 @@ export default function App() {
         <div className="fm-main">
           {/* Tabs are mounted once and hidden with CSS — no unmount/remount on tab switch */}
           <div hidden={tab !== "dashboard"}>
-            <Dashboard inventoryCol={inventoryCol} servicesCol={servicesCol} visitsCol={visitsCol} patientsCol={patientsCol} transactionsCol={transactionsCol} summary={weekSummary} setTab={setTab} onSettings={() => setShowSettings(true)} currentUser={currentUser} onMutate={refreshAllAfterMutation} />
+            <Dashboard inventoryCol={inventoryCol} servicesCol={servicesCol} visitsCol={visitsCol} patientsCol={patientsCol} transactionsCol={transactionsCol} staffCol={staffCol} rosterCol={rosterCol} locations={locationsCol.data} summary={weekSummary} setTab={setTab} onSettings={() => setShowSettings(true)} currentUser={currentUser} onMutate={refreshAllAfterMutation} />
           </div>
           <div hidden={tab !== "inventory"}>
             <InventoryWithRefresh inventoryCol={inventoryCol} restocksCol={restocksCol} currentUser={currentUser} summary={weekSummary} onMutate={refreshAllAfterMutation} />
@@ -3400,6 +3577,7 @@ export default function App() {
           onClose={() => setShowSettings(false)}
           currentUser={currentUser}
           staffCol={staffCol}
+          rosterCol={rosterCol}
           locations={locationsCol.data}
           onLocationsRefresh={locationsCol.refresh}
           servicesCol={servicesCol}
