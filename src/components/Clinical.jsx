@@ -371,6 +371,8 @@ function NoteEditor({ visitId, note, canPrivate, knownAllergy, lastVisit, lastVi
     const item = stockMeds.find((i) => i.id === medPick);
     const q = Number(medQty) || 1;
     if (item && q > Number(item.quantity)) { setMedErr(`Only ${item.quantity} ${item.unit || ""} in stock`); return; }
+    const label = `${item?.name || "this medication"} ×${q}${item?.unit ? " " + item.unit : ""}`;
+    if (!window.confirm(`Add ${label} to the bill? This dispenses from stock and can't be undone in the app.`)) return;
     setMedBusy(true); setMedErr("");
     try {
       await api.post(`/api/visits/${visitId}/items`, { itemType: "medication", referenceId: medPick, quantity: q });
