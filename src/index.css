@@ -115,6 +115,7 @@ button:not(:disabled):active {
    appearance here (this file loads before login, unlike App.jsx's <style>). */
 select,
 input[type="date"],
+input[type="time"],
 input[type="number"],
 input[type="text"],
 input[type="tel"],

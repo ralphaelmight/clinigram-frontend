@@ -58,7 +58,6 @@ const UNITS = ["tablets", "vials", "bottles", "packs", "boxes", "units", "ampoul
 const ROLE_OPTIONS = ["Admin", "Pharmacist", "Front Desk", "Accounts", "Lab Scientist", "Nurse", "Doctor", "Paramedic", "HR", "Other"];
 const isAdminTier = (role) => role === "Admin" || role === "Super Admin";
 // Duty roster: shifts, and weekdays keyed to JS Date.getDay() (0=Sun), shown Mon-first.
-const SHIFTS = ["Morning", "Afternoon", "Night"];
 const WEEKDAYS = [
   { n: 1, label: "Mon" }, { n: 2, label: "Tue" }, { n: 3, label: "Wed" },
   { n: 4, label: "Thu" }, { n: 5, label: "Fri" }, { n: 6, label: "Sat" }, { n: 0, label: "Sun" },
@@ -1783,21 +1782,31 @@ function QuickAction({ icon, label, onClick, tone = "teal", small = false }) {
 // via Settings → Manage price list; this is the at-a-glance view for all staff.
 function PriceListViewSheet({ services = [], onClose }) {
   const active = services.filter((s) => s.active);
+  const [open, setOpen] = useState({}); // sections collapsed by default
+  const toggle = (c) => setOpen((o) => ({ ...o, [c]: !o[c] }));
   return (
     <Sheet title="Price list" onClose={onClose}>
-      <div style={{ fontSize: 12.5, color: MUTE, marginBottom: 10 }}>Standard fees. View only — admins set prices in Settings.</div>
+      <div style={{ fontSize: 12.5, color: MUTE, marginBottom: 10 }}>Standard fees. Tap a section to see its items. View only — admins set prices in Settings.</div>
       {SERVICE_CATEGORIES.map((cat) => {
         const items = active.filter((s) => s.category === cat);
         if (items.length === 0) return null;
+        const isOpen = !!open[cat];
         return (
-          <div key={cat} style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: TEAL, marginBottom: 6 }}>{cat}</div>
-            {items.map((s) => (
-              <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: WHITE, border: `1px solid ${LINE}`, borderRadius: 12, padding: "10px 12px", marginBottom: 7 }}>
-                <span style={{ fontSize: 13.5, fontWeight: 600 }}>{s.name}</span>
-                <span style={{ fontSize: 13.5, fontWeight: 700, color: RED }}>{fmtNaira(s.price)}</span>
+          <div key={cat} style={{ marginBottom: 8 }}>
+            <button onClick={() => toggle(cat)} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", background: WHITE, border: `1px solid ${LINE}`, borderRadius: 12, padding: "11px 12px", cursor: "pointer", fontFamily: "inherit" }}>
+              <span style={{ fontSize: 13.5, fontWeight: 700, color: TEAL }}>{cat} <span style={{ color: FAINT, fontWeight: 600 }}>({items.length})</span></span>
+              <ChevronRight size={16} color={MUTE} style={{ transform: isOpen ? "rotate(90deg)" : "none", transition: "transform 0.15s" }} />
+            </button>
+            {isOpen && (
+              <div style={{ marginTop: 7 }}>
+                {items.map((s) => (
+                  <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: WHITE, border: `1px solid ${LINE}`, borderRadius: 12, padding: "10px 12px", marginBottom: 7 }}>
+                    <span style={{ fontSize: 13.5, fontWeight: 600 }}>{s.name}</span>
+                    <span style={{ fontSize: 13.5, fontWeight: 700, color: RED }}>{fmtNaira(s.price)}</span>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </div>
         );
       })}
@@ -1826,99 +1835,131 @@ function WeekdayTabs({ day, setDay }) {
   );
 }
 
-// Read-only duty roster — who is on each shift. Defaults to today; browse the week.
+// Format a Postgres TIME ("08:00:00") as "8:00am".
+function fmtDutyTime(t) {
+  if (!t) return "";
+  const [h, m] = String(t).split(":");
+  let hh = Number(h); const ap = hh >= 12 ? "pm" : "am"; hh = hh % 12 || 12;
+  return `${hh}:${m}${ap}`;
+}
+// Format a login/logout timestamp as a short 12-hour clock time (matches fmtDutyTime).
+function fmtClock(iso) {
+  if (!iso) return "";
+  return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }).replace(/\s/g, "").toLowerCase();
+}
+const byStart = (a, b) => String(a.start_time || "").localeCompare(String(b.start_time || ""));
+// Minutes a login is after the rostered start (positive = late); null if unknown.
+function minsLate(loginIso, startTime) {
+  if (!loginIso || !startTime) return null;
+  const d = new Date(loginIso);
+  const [sh, sm] = String(startTime).split(":").map(Number);
+  return (d.getHours() * 60 + d.getMinutes()) - (sh * 60 + sm);
+}
+// Duty hours text; falls back to the old shift name for rows created before the time change.
+function dutyLabel(r) {
+  return r.start_time ? `${fmtDutyTime(r.start_time)} – ${fmtDutyTime(r.end_time)}` : (r.shift || "");
+}
+
 function StaffRosterViewSheet({ roster = [], onClose }) {
   const [day, setDay] = useState(new Date().getDay());
-  const forShift = (shift) => roster.filter((r) => r.weekday === day && r.shift === shift);
-  const total = roster.filter((r) => r.weekday === day).length;
+  const [attendance, setAttendance] = useState([]);
+  const isToday = day === new Date().getDay();
+  useEffect(() => {
+    if (!isToday) { setAttendance([]); return; }
+    let live = true;
+    api.get("/api/attendance/today").then((r) => { if (live) setAttendance(r || []); }).catch(() => {});
+    return () => { live = false; };
+  }, [isToday]);
+  const dayRoster = roster.filter((r) => r.weekday === day).sort(byStart);
+  const att = (id) => attendance.find((a) => a.staff_id === id);
   return (
     <Sheet title="Duty roster" onClose={onClose}>
-      <div style={{ fontSize: 12.5, color: MUTE, marginBottom: 10 }}>Who is on duty. View only — admins edit it in Settings.</div>
+      <div style={{ fontSize: 12.5, color: MUTE, marginBottom: 10 }}>Who is on duty{isToday ? ", with today's time in/out" : ""}. View only — admins edit it in Settings.</div>
       <WeekdayTabs day={day} setDay={setDay} />
-      {SHIFTS.map((shift) => {
-        const people = forShift(shift);
-        return (
-          <div key={shift} style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: TEAL, marginBottom: 6 }}>{shift}</div>
-            {people.length === 0
-              ? <div style={{ fontSize: 12.5, color: FAINT, padding: "2px 2px 4px" }}>No one assigned</div>
-              : people.map((r) => (
-                <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, background: WHITE, border: `1px solid ${LINE}`, borderRadius: 12, padding: "9px 12px", marginBottom: 7 }}>
-                  <Avatar name={r.staff_name} role={r.staff_role} size={32} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: 13.5 }}>{r.staff_name}</div>
-                    {r.note && <div style={{ fontSize: 11, color: FAINT, marginTop: 1 }}>{r.note}</div>}
-                  </div>
-                  <RoleBadge role={r.staff_role} />
-                </div>
-              ))}
-          </div>
-        );
-      })}
-      {total === 0 && <EmptyState icon={<Users size={36} />} text="No one on duty this day" />}
+      {dayRoster.length === 0
+        ? <EmptyState icon={<Users size={36} />} text="No one on duty this day" />
+        : dayRoster.map((r) => {
+          const a = isToday ? att(r.staff_id) : null;
+          const late = a && !a.logout_at ? minsLate(a.login_at, r.start_time) : null;
+          const status = !isToday ? null
+            : !a ? { label: "Not in yet", color: FAINT }
+            : a.logout_at ? { label: `Out ${fmtClock(a.logout_at)}`, color: MUTE }
+            : late != null && late > 0 ? { label: `In ${fmtClock(a.login_at)} · ${late}m late`, color: "#b45309" }
+            : { label: `In ${fmtClock(a.login_at)}`, color: TEAL };
+          return (
+            <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, background: WHITE, border: `1px solid ${LINE}`, borderRadius: 12, padding: "9px 12px", marginBottom: 7 }}>
+              <Avatar name={r.staff_name} role={r.staff_role} size={32} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 13.5 }}>{r.staff_name}</div>
+                <div style={{ fontSize: 11.5, color: FAINT, marginTop: 1 }}>{dutyLabel(r)}{r.note ? ` · ${r.note}` : ""}</div>
+              </div>
+              {status
+                ? <div style={{ fontSize: 11, fontWeight: 700, color: status.color, textAlign: "right", flexShrink: 0 }}>{status.label}</div>
+                : <RoleBadge role={r.staff_role} />}
+            </div>
+          );
+        })}
     </Sheet>
   );
 }
 
-// Admin editor for the weekly duty roster — assign/remove staff per weekday + shift.
+// Admin editor for the weekly duty roster — assign staff with their duty hours per weekday.
 function ManageRoster({ rosterCol, staffCol, currentUser, onClose }) {
   const roster = rosterCol.data || [];
   const staff = (staffCol.data || []).filter((u) => u.active);
   const [day, setDay] = useState(new Date().getDay());
-  const [addShift, setAddShift] = useState(SHIFTS[0]);
   const [addStaff, setAddStaff] = useState("");
+  const [startT, setStartT] = useState("08:00");
+  const [endT, setEndT] = useState("17:00");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-
-  const forShift = (shift) => roster.filter((r) => r.weekday === day && r.shift === shift);
-  const assignedIds = new Set(roster.filter((r) => r.weekday === day && r.shift === addShift).map((r) => r.staff_id));
-  const available = staff.filter((u) => !assignedIds.has(u.id));
+  const dayRoster = roster.filter((r) => r.weekday === day).sort(byStart);
 
   const add = async () => {
     if (!addStaff) { setError("Choose a staff member"); return; }
+    if (!startT || !endT) { setError("Pick a start and end time"); return; }
     setBusy(true); setError("");
     try {
-      await rosterCol.create({ staffId: addStaff, weekday: day, shift: addShift, locationId: currentUser.location_id || undefined });
+      await rosterCol.create({ staffId: addStaff, weekday: day, startTime: startT, endTime: endT, locationId: currentUser.location_id || undefined });
       setAddStaff("");
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
   };
-
   const removeOne = async (id) => { try { await rosterCol.remove(id); } catch (e) { setError(e.message); } };
 
   return (
     <Sheet title="Manage duty roster" onClose={onClose}>
-      <div style={{ fontSize: 12.5, color: MUTE, marginBottom: 10 }}>Set who works each shift. The pattern repeats every week.</div>
+      <div style={{ fontSize: 12.5, color: MUTE, marginBottom: 10 }}>Set who works and their hours each day. The pattern repeats every week.</div>
       <WeekdayTabs day={day} setDay={setDay} />
       <ErrorBanner message={error} />
-      {SHIFTS.map((shift) => {
-        const people = forShift(shift);
-        return (
-          <div key={shift} style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: TEAL, marginBottom: 6 }}>{shift}</div>
-            {people.length === 0 && <div style={{ fontSize: 12.5, color: FAINT, padding: "2px 2px 6px" }}>No one assigned</div>}
-            {people.map((r) => (
-              <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, background: WHITE, border: `1px solid ${LINE}`, borderRadius: 12, padding: "8px 10px 8px 12px", marginBottom: 7 }}>
-                <Avatar name={r.staff_name} role={r.staff_role} size={30} />
-                <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, fontSize: 13 }}>{r.staff_name}</div></div>
-                <button onClick={() => removeOne(r.id)} aria-label="Remove" style={{ background: `${RED}12`, color: RED, border: "none", borderRadius: 9, padding: 6, cursor: "pointer", display: "flex" }}><X size={15} /></button>
-              </div>
-            ))}
+      {dayRoster.length === 0 && <div style={{ fontSize: 12.5, color: FAINT, padding: "2px 2px 8px" }}>No one on duty on {WEEKDAYS.find((w) => w.n === day)?.label}.</div>}
+      {dayRoster.map((r) => (
+        <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, background: WHITE, border: `1px solid ${LINE}`, borderRadius: 12, padding: "8px 10px 8px 12px", marginBottom: 7 }}>
+          <Avatar name={r.staff_name} role={r.staff_role} size={30} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 13 }}>{r.staff_name}</div>
+            <div style={{ fontSize: 11, color: FAINT }}>{dutyLabel(r)}</div>
           </div>
-        );
-      })}
+          <button onClick={() => removeOne(r.id)} aria-label="Remove" style={{ background: `${RED}12`, color: RED, border: "none", borderRadius: 9, padding: 6, cursor: "pointer", display: "flex" }}><X size={15} /></button>
+        </div>
+      ))}
       <div style={{ marginTop: 6, padding: 12, background: "#F7F9FA", borderRadius: 12, border: `1px solid ${LINE}` }}>
         <div style={{ fontSize: 12.5, fontWeight: 700, color: INK, marginBottom: 8 }}>Add to {WEEKDAYS.find((w) => w.n === day)?.label}</div>
+        <select value={addStaff} onChange={(e) => setAddStaff(e.target.value)} style={{ ...inputStyle, marginBottom: 8 }}>
+          <option value="">Select staff{"…"}</option>
+          {staff.map((u) => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
+        </select>
         <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-          <select value={addShift} onChange={(e) => { setAddShift(e.target.value); setAddStaff(""); }} style={{ ...inputStyle, flex: "0 0 40%" }}>
-            {SHIFTS.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-          <select value={addStaff} onChange={(e) => setAddStaff(e.target.value)} style={{ ...inputStyle, flex: 1 }}>
-            <option value="">Select staff{"…"}</option>
-            {available.map((u) => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
-          </select>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: MUTE, marginBottom: 3 }}>From</div>
+            <input type="time" value={startT} onChange={(e) => setStartT(e.target.value)} style={inputStyle} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: MUTE, marginBottom: 3 }}>To</div>
+            <input type="time" value={endT} onChange={(e) => setEndT(e.target.value)} style={inputStyle} />
+          </div>
         </div>
-        <PrimaryButton color={TEAL} onClick={add} disabled={busy || !addStaff}><Plus size={16} /> Add to shift</PrimaryButton>
+        <PrimaryButton color={TEAL} onClick={add} disabled={busy || !addStaff}><Plus size={16} /> Add to roster</PrimaryButton>
       </div>
     </Sheet>
   );
