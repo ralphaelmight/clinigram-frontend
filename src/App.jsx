@@ -472,7 +472,7 @@ function Field({ label, children, style }) {
 // Flat, high-contrast fields (white surface + hairline border) — the one restyle
 // applied app-wide. Keeps the teal focus ring from the global input:focus CSS.
 const inputStyle = {
-  width: "100%", padding: "11px 12px", borderRadius: 12, border: "1px solid #d1d5db",
+  width: "100%", padding: "11px 12px", borderRadius: 12, border: "1px solid #c3cad3",
   fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: "inherit",
   background: WHITE, color: INK,
   boxShadow: "none",
@@ -567,8 +567,8 @@ function EmptyState({ icon, text, sub }) {
 function SearchBar({ value, onChange, placeholder }) {
   return (
     <div style={{ position: "relative", marginBottom: 12 }}>
-      <Search size={16} color={FAINT} style={{ position: "absolute", left: 12, top: 12 }} />
-      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} style={{ ...inputStyle, paddingLeft: 36 }} />
+      <Search size={16} color="#2b7a7e" style={{ position: "absolute", left: 12, top: 13 }} />
+      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} style={{ ...inputStyle, paddingLeft: 36, border: "1.5px solid #2b7a7e" }} />
     </div>
   );
 }

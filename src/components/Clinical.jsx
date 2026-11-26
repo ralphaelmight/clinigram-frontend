@@ -19,6 +19,8 @@ const SURFACE = "#f2f4f8";
 const SUBTLE = "#f5f7fa";
 const MUTE = "#6b7280";
 const FAINT = "#9ca3af";
+const GREEN = "#1f9d57";       // in-range vitals
+const HAIRLINE = "#c3cad3";    // flat-look border with more contrast
 const SHADOW_SOFT = "5px 5px 12px #c9d0de, -5px -5px 12px #ffffff";
 
 const VIEW_ROLES = ["Doctor", "Nurse", "Paramedic", "Super Admin"];
@@ -30,7 +32,7 @@ export const canViewClinical = (role) => VIEW_ROLES.includes(role);
 // Flat fields, matching the app-wide input restyle (white + hairline border).
 // Teal focus ring comes from the global input:focus CSS in App.jsx.
 const inputStyle = {
-  width: "100%", padding: "10px 12px", borderRadius: 12, border: "1px solid #d1d5db",
+  width: "100%", padding: "10px 12px", borderRadius: 12, border: "1px solid #c3cad3",
   fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: "inherit",
   background: WHITE, color: INK, boxShadow: "none",
   transition: "border-color 0.15s, box-shadow 0.15s",
@@ -129,10 +131,11 @@ function Overlay({ title, onClose, children }) {
     <div data-fm-modal className="app-no-print" onClick={onClose}
       style={{ position: "fixed", inset: 0, background: "rgba(26,26,46,0.5)", zIndex: 70, display: "flex", alignItems: "flex-end" }}>
       <div onClick={(e) => e.stopPropagation()}
-        style={{ background: SURFACE, width: "100%", maxHeight: "94vh", overflowY: "auto", borderRadius: "24px 24px 0 0", padding: "16px 20px calc(32px + env(safe-area-inset-bottom, 0px))", overscrollBehaviorY: "contain" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        style={{ background: SURFACE, width: "100%", maxHeight: "94vh", overflowY: "auto", borderRadius: "24px 24px 0 0", padding: "0 20px calc(32px + env(safe-area-inset-bottom, 0px))", overscrollBehaviorY: "contain" }}>
+        {/* Sticky header so the Close button stays reachable however far the form scrolls. */}
+        <div style={{ position: "sticky", top: 0, zIndex: 3, background: SURFACE, display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 0 12px", marginBottom: 6, boxShadow: `0 1px 0 ${HAIRLINE}` }}>
           <div style={{ fontSize: 17, fontWeight: 700, color: INK }}>{title}</div>
-          <button onClick={onClose} aria-label="Close" style={{ background: SUBTLE, border: "none", borderRadius: 10, padding: 7, cursor: "pointer" }}><X size={18} color={MUTE} /></button>
+          <button onClick={onClose} aria-label="Close" style={{ background: WHITE, border: `1px solid ${HAIRLINE}`, borderRadius: 10, padding: 7, cursor: "pointer", display: "flex" }}><X size={18} color={MUTE} /></button>
         </div>
         {children}
       </div>
@@ -217,6 +220,34 @@ const EXAM_FIELDS = [
   ["neurological_examination", "Neurological", 2], ["musculoskeletal_examination", "Musculoskeletal", 2],
   ["other_examination", "Other", 2],
 ];
+const EXAM_MORE = EXAM_FIELDS.slice(1); // everything after General — behind "+ Add"
+
+// Read-only vitals bar (nurse-recorded) shown above Subjective. Normal = green, abnormal = red.
+function VitalsBar({ data }) {
+  const d = data || {};
+  const has = (v) => v !== undefined && v !== null && String(v) !== "";
+  const items = [];
+  if (has(d.temperature)) items.push({ l: "Temp", v: `${d.temperature}°`, bad: isAbnormal("temperature", d.temperature), ruled: true });
+  if (has(d.pulse_rate)) items.push({ l: "Pulse", v: d.pulse_rate, bad: isAbnormal("pulse_rate", d.pulse_rate), ruled: true });
+  if (has(d.respiratory_rate)) items.push({ l: "Resp", v: d.respiratory_rate, bad: isAbnormal("respiratory_rate", d.respiratory_rate), ruled: true });
+  if (has(d.blood_pressure_systolic)) items.push({ l: "BP", v: `${d.blood_pressure_systolic}/${d.blood_pressure_diastolic ?? ""}`, bad: isAbnormal("blood_pressure_systolic", d.blood_pressure_systolic) || isAbnormal("blood_pressure_diastolic", d.blood_pressure_diastolic), ruled: true });
+  if (has(d.oxygen_saturation)) items.push({ l: "SpO₂", v: `${d.oxygen_saturation}%`, bad: isAbnormal("oxygen_saturation", d.oxygen_saturation), ruled: true });
+  if (has(d.weight_kg)) items.push({ l: "Wt", v: `${d.weight_kg}kg`, bad: false, ruled: false });
+  return (
+    <div style={{ background: WHITE, border: `1px solid ${HAIRLINE}`, borderRadius: 12, padding: "8px 10px", marginBottom: 10, boxShadow: SHADOW_SOFT }}>
+      <div style={{ fontSize: 9.5, fontWeight: 700, color: FAINT, textTransform: "uppercase", letterSpacing: ".5px", marginBottom: items.length ? 6 : 0 }}>Vitals · recorded by nurse</div>
+      {items.length === 0
+        ? <div style={{ fontSize: 12, color: FAINT }}>None recorded for this visit yet.</div>
+        : <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {items.map((it, i) => {
+              const color = it.bad ? RED : it.ruled ? GREEN : INK;
+              const bg = it.bad ? "#FDE7E5" : it.ruled ? "#E7F6EE" : SUBTLE;
+              return <span key={i} style={{ fontSize: 11.5, fontWeight: 700, color, background: bg, borderRadius: 8, padding: "3px 8px" }}><span style={{ color: FAINT, fontWeight: 600 }}>{it.l} </span>{it.v}{it.bad ? " ▲" : ""}</span>;
+            })}
+          </div>}
+    </div>
+  );
+}
 
 // A clean SOAP block: lettered badge + title, then its fields.
 function SoapSection({ letter, title, hint, children }) {
@@ -255,7 +286,7 @@ function NoteSnapshot({ allergy, lastVisit, lastVitals }) {
   const hasVitals = v.blood_pressure_systolic || v.pulse_rate || v.temperature || v.oxygen_saturation;
   if (!allergy && !lastVisit && !hasVitals) return null;
   const Tile = ({ label, value, bad }) => (
-    <div style={{ flex: 1, minWidth: 64, background: WHITE, border: "1px solid #e5e7eb", borderRadius: 10, padding: "6px 4px", textAlign: "center" }}>
+    <div style={{ flex: 1, minWidth: 64, background: WHITE, border: "1px solid #c3cad3", borderRadius: 10, padding: "6px 4px", textAlign: "center" }}>
       <div style={{ fontSize: 14, fontWeight: 800, color: bad ? RED : INK }}>{value}{bad ? " ▲" : ""}</div>
       <div style={{ fontSize: 9, fontWeight: 700, color: FAINT, textTransform: "uppercase", letterSpacing: ".4px" }}>{label}</div>
     </div>
@@ -286,14 +317,21 @@ function ChipRow({ options, onPick }) {
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "2px 0 12px" }}>
       {options.map((o) => (
-        <button key={o} type="button" onClick={() => onPick(o)} style={{ fontSize: 11.5, fontWeight: 600, padding: "5px 10px", borderRadius: 999, background: SUBTLE, color: MUTE, border: "1px solid #e5e7eb", cursor: "pointer", fontFamily: "inherit" }}>+ {o}</button>
+        <button key={o} type="button" onClick={() => onPick(o)} style={{ fontSize: 11.5, fontWeight: 600, padding: "5px 10px", borderRadius: 999, background: SUBTLE, color: MUTE, border: "1px solid #c3cad3", cursor: "pointer", fontFamily: "inherit" }}>+ {o}</button>
       ))}
     </div>
   );
 }
 
 function NoteEditor({ visitId, note, canPrivate, knownAllergy, lastVisit, lastVitals, onClose, onSaved }) {
-  const [f, setF] = useState(() => ({ ...(note || {}) }));
+  // Vitals are view-only here (the nurse records them). On a NEW consultation, snapshot
+  // the latest recorded vitals so they're stored with, and shown on, the note.
+  const [f, setF] = useState(() => {
+    if (note) return { ...note };
+    const seed = {};
+    if (lastVitals) for (const [k] of VITAL_FIELDS) if (lastVitals[k] !== null && lastVitals[k] !== undefined && lastVitals[k] !== "") seed[k] = lastVitals[k];
+    return seed;
+  });
   const [noteId, setNoteId] = useState(note?.id || null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -307,7 +345,7 @@ function NoteEditor({ visitId, note, canPrivate, knownAllergy, lastVisit, lastVi
     const n = note || {};
     return {
       s: SUBJECTIVE_MORE.some(([k]) => str(n[k])),
-      o: EXAM_FIELDS.some(([k]) => str(n[k])),
+      o: EXAM_MORE.some(([k]) => str(n[k])),
       a: !!(str(n.differential_diagnoses) || str(n.icd_code)),
       p: PLAN_MORE.some((k) => str(n[k])),
       priv: !!str(n.doctor_private_notes),
@@ -362,9 +400,10 @@ function NoteEditor({ visitId, note, canPrivate, knownAllergy, lastVisit, lastVi
   };
 
   return (
-    <Overlay title={noteId ? "Clinical note (draft)" : "New clinical note"} onClose={onClose}>
+    <Overlay title={noteId ? "Consultation (draft)" : "Consultation"} onClose={onClose}>
       <Err message={error} />
-      <NoteSnapshot allergy={knownAllergy} lastVisit={lastVisit} lastVitals={lastVitals} />
+      <NoteSnapshot allergy={knownAllergy} lastVisit={lastVisit} />
+      <VitalsBar data={f} />
 
       <SoapSection letter="S" title="Subjective">
         <Fld label="Chief complaint *"><Txt value={f.chief_complaint} onChange={set("chief_complaint")} rows={2} placeholder="Why the patient came in" /></Fld>
@@ -374,12 +413,10 @@ function NoteEditor({ visitId, note, canPrivate, knownAllergy, lastVisit, lastVi
         </More>
       </SoapSection>
 
-      <SoapSection letter="O" title="Objective" hint="vitals · red = out of range">
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 10px" }}>
-          {VITAL_FIELDS.map(([k, label]) => <Fld key={k} label={label}><Num value={f[k]} onChange={set(k)} abnormal={isAbnormal(k, f[k])} /></Fld>)}
-        </div>
-        <More label="Add examination findings" open={!!expanded.o} onToggle={() => tog("o")} count={filled(EXAM_FIELDS.map((x) => x[0]))}>
-          {EXAM_FIELDS.map(([k, label, rows]) => <Fld key={k} label={label}><Txt value={f[k]} onChange={set(k)} rows={rows} /></Fld>)}
+      <SoapSection letter="O" title="Objective" hint="examination">
+        <Fld label="General examination"><Txt value={f.general_examination} onChange={set("general_examination")} rows={2} placeholder="On examination…" /></Fld>
+        <More label="Add system examinations" open={!!expanded.o} onToggle={() => tog("o")} count={filled(EXAM_MORE.map((x) => x[0]))}>
+          {EXAM_MORE.map(([k, label, rows]) => <Fld key={k} label={label}><Txt value={f[k]} onChange={set(k)} rows={rows} /></Fld>)}
         </More>
       </SoapSection>
 
@@ -544,11 +581,12 @@ export function ClinicalSection({ visitId, visitOpen, user, patientId }) {
     api.get(`/api/patients/${patientId}/clinical-history`)
       .then((r) => { if (live) { setHistAllergy((r.find((x) => x.allergies && String(x.allergies).trim()) || {}).allergies || ""); setLastVisit(r[0] || null); } })
       .catch(() => {});
+    // This visit's nurse-recorded vitals (not a stale prior visit's) for the view-only bar.
     api.get(`/api/patients/${patientId}/vitals-history`)
-      .then((r) => { if (live) setLastVitals((r || [])[0] || null); })
+      .then((r) => { if (live) setLastVitals((r || []).find((v) => v.visit_id === visitId) || null); })
       .catch(() => {});
     return () => { live = false; };
-  }, [patientId, role]);
+  }, [patientId, role, visitId]);
 
   if (!canViewClinical(role)) return null;
   const canWrite = WRITE_NOTE_ROLES.includes(role);
@@ -567,7 +605,7 @@ export function ClinicalSection({ visitId, visitOpen, user, patientId }) {
       {notes === null ? (
         <div style={{ fontSize: 13, color: FAINT }}>Loading...</div>
       ) : notes.length === 0 ? (
-        <div style={{ fontSize: 13, color: FAINT, marginBottom: 10 }}>No clinical note for this visit yet.</div>
+        <div style={{ fontSize: 13, color: FAINT, marginBottom: 10 }}>No consultation recorded for this visit yet.</div>
       ) : (
         notes.map((n) => (
           <div key={n.id} style={{ padding: "9px 0", borderTop: `1px solid ${SUBTLE}`, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
@@ -587,7 +625,7 @@ export function ClinicalSection({ visitId, visitOpen, user, patientId }) {
 
       <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
         {canVitals && visitOpen && <div style={{ flex: 1 }}><Btn tone="teal" onClick={() => setVitalsOpen(true)}><Activity size={15} /> Record vitals</Btn></div>}
-        {canWrite && visitOpen && <div style={{ flex: 1 }}><Btn onClick={() => setEditor({ note: null })}><Plus size={15} /> New note</Btn></div>}
+        {canWrite && visitOpen && <div style={{ flex: 1 }}><Btn onClick={() => setEditor({ note: null })}><Plus size={15} /> Consultation</Btn></div>}
       </div>
       {!visitOpen && canWrite && <div style={{ fontSize: 11.5, color: FAINT, marginTop: 8 }}>This visit is closed, so new notes can't be added.</div>}
 
