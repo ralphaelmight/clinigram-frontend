@@ -22,7 +22,7 @@ const FAINT = "#9ca3af";
 const SHADOW_INSET = "inset 4px 4px 10px #c4ccd8, inset -4px -4px 10px #ffffff";
 const SHADOW_SOFT = "5px 5px 12px #c9d0de, -5px -5px 12px #ffffff";
 
-const VIEW_ROLES = ["Doctor", "Nurse", "Paramedic", "Admin", "Super Admin"];
+const VIEW_ROLES = ["Doctor", "Nurse", "Paramedic", "Super Admin"];
 const WRITE_NOTE_ROLES = ["Doctor", "Super Admin"];
 const VITALS_ROLES = ["Doctor", "Nurse", "Paramedic", "Super Admin"];
 
