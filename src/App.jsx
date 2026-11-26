@@ -2691,7 +2691,7 @@ function VisitDetailSheet({ visitId, inventory, services, patients, onClose, onM
     <Sheet title={`Visit · ${visit.patient_name}`} onClose={onClose}>
       <div style={{ fontSize: 12, color: FAINT, marginBottom: 10 }}>HN {visit.hospital_number} · Opened {fmtDateTime(visit.opened_at)} by {visit.opened_by_name}</div>
 
-      <ClinicalSection visitId={visitId} visitOpen={visit.status === "open"} user={currentUser} patientId={visit.patient_id} />
+      <ClinicalSection visitId={visitId} visitOpen={visit.status === "open"} user={currentUser} patientId={visit.patient_id} inventory={inventory} visitMeds={(visit.items || []).filter((it) => it.item_type === "medication")} onDispensed={() => { refresh(); onMutate(); }} />
 
       {visit.items.length > 0 && (
         <div style={{ marginBottom: 12 }}>

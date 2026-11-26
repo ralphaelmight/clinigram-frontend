@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Stethoscope, Activity, FileText, Plus, Save, CheckCircle2, X, ChevronDown, ChevronUp, Lock, History, AlertTriangle } from "lucide-react";
+import { Stethoscope, Activity, FileText, Plus, Save, CheckCircle2, X, ChevronDown, ChevronUp, Lock, History, AlertTriangle, Pill } from "lucide-react";
 import { api } from "../api";
 import { useTapLock, Spinner } from "../lib/tapLock";
 
@@ -323,7 +323,7 @@ function ChipRow({ options, onPick }) {
   );
 }
 
-function NoteEditor({ visitId, note, canPrivate, knownAllergy, lastVisit, lastVitals, onClose, onSaved }) {
+function NoteEditor({ visitId, note, canPrivate, knownAllergy, lastVisit, lastVitals, inventory, visitMeds, onDispensed, onClose, onSaved }) {
   // Vitals are view-only here (the nurse records them). On a NEW consultation, snapshot
   // the latest recorded vitals so they're stored with, and shown on, the note.
   const [f, setF] = useState(() => {
@@ -358,6 +358,30 @@ function NoteEditor({ visitId, note, canPrivate, knownAllergy, lastVisit, lastVi
     if (parts.some((x) => x.toLowerCase() === word.toLowerCase())) return p; // no duplicates
     return { ...p, [field]: cur ? `${cur}, ${word}` : word };
   });
+
+  // Dispense medications from pharmacy stock into this visit's bill.
+  // Same predicate as the Inventory "Pharmacy" tab (case-insensitive).
+  const stockMeds = (inventory || []).filter((i) => (i.category || "").toLowerCase() === "pharmacy" && Number(i.quantity) > 0);
+  const [medPick, setMedPick] = useState("");
+  const [medQty, setMedQty] = useState("1");
+  const [medBusy, setMedBusy] = useState(false);
+  const [medErr, setMedErr] = useState("");
+  const dispense = async () => {
+    if (!medPick) { setMedErr("Choose a medication"); return; }
+    const item = stockMeds.find((i) => i.id === medPick);
+    const q = Number(medQty) || 1;
+    if (item && q > Number(item.quantity)) { setMedErr(`Only ${item.quantity} ${item.unit || ""} in stock`); return; }
+    setMedBusy(true); setMedErr("");
+    try {
+      await api.post(`/api/visits/${visitId}/items`, { itemType: "medication", referenceId: medPick, quantity: q });
+      // Record it in the plan text so the signed note carries the prescription.
+      const line = `Dispensed: ${item?.name || "Medication"} ×${q}${item?.unit ? " " + item.unit : ""}`;
+      setF((p) => { const cur = String(p.treatment_plan || ""); return cur.includes(line) ? p : { ...p, treatment_plan: cur ? `${cur}\n${line}` : line }; });
+      setMedPick(""); setMedQty("1");
+      onDispensed && onDispensed(); // reloads the visit → the bill list below refreshes
+    } catch (e) { setMedErr(e.message); }
+    finally { setMedBusy(false); }
+  };
 
   const payload = () => {
     const body = {};
@@ -430,6 +454,36 @@ function NoteEditor({ visitId, note, canPrivate, knownAllergy, lastVisit, lastVi
 
       <SoapSection letter="P" title="Plan">
         <Fld label="Treatment plan *"><Txt value={f.treatment_plan} onChange={set("treatment_plan")} rows={3} placeholder="Medications, procedures, advice" /></Fld>
+
+        {inventory && (
+          <div style={{ borderTop: `1px solid ${HAIRLINE}`, marginTop: 4, paddingTop: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 7 }}>
+              <Pill size={15} color={TEAL} />
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>Dispense from pharmacy</span>
+              <span style={{ fontSize: 11, color: FAINT }}>· adds to the bill</span>
+            </div>
+            {knownAllergy && String(knownAllergy).trim() ? (
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: RED, background: "#FDE7E5", borderRadius: 8, padding: "5px 9px", marginBottom: 7, display: "flex", gap: 6, alignItems: "center" }}><AlertTriangle size={13} /> Allergies: {knownAllergy}</div>
+            ) : null}
+            {(visitMeds || []).map((it) => (
+              <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 6, background: "#E7F6EE", color: GREEN, borderRadius: 9, padding: "6px 10px", marginBottom: 6, fontSize: 12.5, fontWeight: 700 }}>
+                <CheckCircle2 size={14} /> {it.description} ×{it.quantity} <span style={{ color: FAINT, fontWeight: 600, marginLeft: "auto" }}>on bill</span>
+              </div>
+            ))}
+            {medErr && <Err message={medErr} />}
+            <div style={{ display: "flex", gap: 6 }}>
+              <select value={medPick} onChange={(e) => { setMedPick(e.target.value); setMedErr(""); }} style={{ ...inputStyle, flex: 1, minWidth: 0 }}>
+                <option value="">{stockMeds.length ? "Select medication…" : "No pharmacy stock available"}</option>
+                {stockMeds.map((i) => <option key={i.id} value={i.id}>{i.name} ({i.quantity} {i.unit} left)</option>)}
+              </select>
+              <input type="number" inputMode="numeric" min="1" value={medQty} onChange={(e) => setMedQty(e.target.value)} aria-label="Quantity" style={{ ...inputStyle, width: 64, flex: "0 0 64px", textAlign: "center" }} />
+            </div>
+            <div style={{ marginTop: 7 }}>
+              <Btn tone="teal" small onClick={dispense} disabled={medBusy || !medPick}><Plus size={14} /> {medBusy ? "Adding…" : "Add to bill"}</Btn>
+            </div>
+          </div>
+        )}
+
         <More label="Add orders, referral & follow-up" open={!!expanded.p} onToggle={() => tog("p")} count={filled(PLAN_MORE)}>
           <Fld label="Investigations ordered"><Txt value={f.investigations_ordered} onChange={set("investigations_ordered")} rows={2} /></Fld>
           <Fld label="Referral (to whom / where)"><Txt value={f.referral} onChange={set("referral")} rows={1} /></Fld>
@@ -556,7 +610,7 @@ function NoteView({ visitId, note, user, onClose }) {
 
 /* ----------------------------- Section shown inside a Visit ----------------------------- */
 
-export function ClinicalSection({ visitId, visitOpen, user, patientId }) {
+export function ClinicalSection({ visitId, visitOpen, user, patientId, inventory, visitMeds, onDispensed }) {
   const role = user?.role;
   const [notes, setNotes] = useState(null);
   const [error, setError] = useState("");
@@ -630,7 +684,7 @@ export function ClinicalSection({ visitId, visitOpen, user, patientId }) {
       {!visitOpen && canWrite && <div style={{ fontSize: 11.5, color: FAINT, marginTop: 8 }}>This visit is closed, so new notes can't be added.</div>}
 
       {vitalsOpen && <VitalsSheet visitId={visitId} onClose={() => setVitalsOpen(false)} onSaved={() => setVitalsMsg("Vitals saved.")} />}
-      {editor && <NoteEditor visitId={visitId} note={editor.note} canPrivate={role === "Doctor" || role === "Super Admin"} knownAllergy={((notes || []).find((n) => n.allergies && String(n.allergies).trim()) || {}).allergies || histAllergy} lastVisit={lastVisit} lastVitals={lastVitals} onClose={() => { setEditor(null); load(); }} onSaved={load} />}
+      {editor && <NoteEditor visitId={visitId} note={editor.note} canPrivate={role === "Doctor" || role === "Super Admin"} knownAllergy={((notes || []).find((n) => n.allergies && String(n.allergies).trim()) || {}).allergies || histAllergy} lastVisit={lastVisit} lastVitals={lastVitals} inventory={inventory} visitMeds={visitMeds} onDispensed={onDispensed} onClose={() => { setEditor(null); load(); }} onSaved={load} />}
       {viewing && <NoteView visitId={visitId} note={viewing} user={user} onClose={() => setViewing(null)} />}
     </div>
   );
