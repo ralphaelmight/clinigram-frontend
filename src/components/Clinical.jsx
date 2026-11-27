@@ -560,10 +560,20 @@ function NoteView({ visitId, note, user, onClose }) {
     finally { setBusy(false); }
   };
   return (
-    <Overlay title="Clinical note" onClose={onClose}>
+    <Overlay title={note.summary_only ? "Consultation summary" : "Clinical note"} onClose={onClose}>
       <div style={{ fontSize: 12, color: FAINT, marginBottom: 10 }}>
         {note.status === "completed" ? `Completed ${fmtDateTime(note.completed_at)}` : "Draft"} · locked once completed
       </div>
+      {note.summary_only && (
+        <div style={{ fontSize: 12, color: TEAL, background: "#E7F5F5", borderRadius: 10, padding: "8px 11px", marginBottom: 10, fontWeight: 600 }}>
+          Summary view — chief complaint, diagnosis and plan. Full notes are doctor-only.
+        </div>
+      )}
+      {note.summary_only && note.amended && (
+        <div style={{ fontSize: 12, color: "#b45309", background: "#FEF3E2", borderRadius: 10, padding: "8px 11px", marginBottom: 10, fontWeight: 700, display: "flex", gap: 6, alignItems: "center" }}>
+          <AlertTriangle size={14} /> This note was amended after signing — ask the doctor for the latest.
+        </div>
+      )}
       <Err message={error} />
       {vitals.length > 0 && (
         <div style={{ background: WHITE, borderRadius: 14, padding: 12, marginBottom: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
@@ -585,7 +595,7 @@ function NoteView({ visitId, note, user, onClose }) {
           <div style={{ fontSize: 14 }}>{fmtDate(note.follow_up_date)}</div>
         </div>
       )}
-      {note.status === "completed" && (
+      {note.status === "completed" && !note.summary_only && (
         <div style={{ marginTop: 6, marginBottom: 12 }}>
           <div style={{ fontSize: 11.5, fontWeight: 700, color: MUTE, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 6 }}>Addenda (dated corrections)</div>
           {addenda.length === 0 && <div style={{ fontSize: 13, color: FAINT, marginBottom: 6 }}>None. The signed note above cannot be edited; add a dated addendum to correct or extend it.</div>}
@@ -603,7 +613,7 @@ function NoteView({ visitId, note, user, onClose }) {
           )}
         </div>
       )}
-      {note.status === "completed" && (
+      {note.status === "completed" && !note.summary_only && (
         <Btn tone="teal" onClick={openPdf} disabled={busy}><FileText size={16} /> {busy ? "Opening..." : "Open PDF summary"}</Btn>
       )}
     </Overlay>
