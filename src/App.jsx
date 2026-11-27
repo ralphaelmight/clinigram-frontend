@@ -2433,7 +2433,11 @@ function Patients({ patientsCol, currentUser }) {
     setBusy(true);
     try {
       if (sheet === "add") await create(form);
-      else await update(sheet, form);
+      else {
+        const r = await update(sheet, form);
+        // Confirm the edit was recorded in the audit trail, naming what changed.
+        showSaved(r?.changed?.length ? `Saved & logged: changed ${r.changed.join(", ")}` : "Saved & logged to the audit trail");
+      }
       setSheet(null);
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
