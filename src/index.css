@@ -100,6 +100,13 @@ button:not(:disabled):active {
   to   { transform: translateY(0);    opacity: 1; }
 }
 
+/* ── Accessibility preferences (toggled from Settings) ──────────────────── */
+/* The app styles text with inline px, so a font-size rule won't cascade. zoom
+   scales everything (incl. inline sizes); filter lives on <html> so fixed
+   elements like the bottom nav keep working (html is the fixed containing block). */
+html.a11y-small { zoom: 0.9; }
+html.a11y-contrast { filter: contrast(1.22); }
+
 /* ── Reduced motion ─────────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
