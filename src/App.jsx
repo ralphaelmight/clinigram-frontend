@@ -3295,12 +3295,13 @@ function Report({ currentUser, ready }) {
   const [periodType, setPeriodType] = useState("week");
   const [offset, setOffset] = useState(0);
   const { summary } = useSummary(periodType, offset, ready);
-  const periodCount = periodType === "month" ? 12 : periodType === "quarter" ? 8 : 8;
+  const periodCount = periodType === "month" ? 12 : periodType === "year" ? 5 : 8;
   const options = Array.from({ length: periodCount }, (_, i) => i);
 
   const shortLabel = (i) => {
     if (periodType === "week") return i === 0 ? "This week" : i === 1 ? "Last week" : `${i} weeks ago`;
     if (periodType === "month") return i === 0 ? "This month" : i === 1 ? "Last month" : `${i} months ago`;
+    if (periodType === "year") return i === 0 ? "This year" : i === 1 ? "Last year" : `${i} years ago`;
     return i === 0 ? "This quarter" : `${i} quarters ago`;
   };
 
@@ -3316,8 +3317,8 @@ function Report({ currentUser, ready }) {
     <div style={{ padding: "0 16px calc(96px + env(safe-area-inset-bottom, 0px))" }}>
       <TopBar title="Report" subtitle={summary.label} />
       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-        {["week", "month", "quarter"].map((p) => (
-          <button key={p} onClick={() => { setPeriodType(p); setOffset(0); }} style={{ flex: 1, border: "none", borderRadius: 10, padding: "9px 0", fontSize: 12.5, fontWeight: 700, cursor: "pointer", background: periodType === p ? RED : "#F2F3F4", color: periodType === p ? WHITE : MUTE, textTransform: "capitalize" }}>{p}ly</button>
+        {["week", "month", "quarter", "year"].map((p) => (
+          <button key={p} onClick={() => { setPeriodType(p); setOffset(0); }} style={{ flex: 1, border: "none", borderRadius: 10, padding: "9px 4px", fontSize: 12, fontWeight: 700, cursor: "pointer", background: periodType === p ? RED : "#F2F3F4", color: periodType === p ? WHITE : MUTE, textTransform: "capitalize" }}>{p}ly</button>
         ))}
       </div>
       <div style={{ marginBottom: 14 }}>
