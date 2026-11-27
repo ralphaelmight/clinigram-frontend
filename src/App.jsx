@@ -1641,8 +1641,9 @@ function SettingsRow({ icon, label, onClick, danger, right }) {
 
 /* ----------------------------- Attendance card ----------------------------- */
 
-function AttendanceCard({ currentUser }) {
+function AttendanceCard({ currentUser, roster = [] }) {
   const [rows, setRows] = useState([]);
+  const today = new Date().getDay();
 
   useEffect(() => {
     api.get("/api/attendance/today").then(setRows).catch(() => {});
@@ -1662,22 +1663,27 @@ function AttendanceCard({ currentUser }) {
         <div style={{ fontWeight: 700, fontSize: 13.5, color: INK }}>Staff on duty today</div>
         <div style={{ marginLeft: "auto", fontSize: 11.5, color: FAINT }}>{rows.filter((r) => !r.logout_at).length} still in</div>
       </div>
-      {rows.map((r) => (
-        <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: `1px solid ${LINE}` }}>
-          <Avatar name={r.staff_name} role={r.staff_role} size={30} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>
-              {r.staff_name}
-              {r.is_late && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: RED, background: "#FEECEC", borderRadius: 5, padding: "1px 6px" }}>LATE</span>}
-              {!r.logout_at && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: TEAL, background: "#E7F5F5", borderRadius: 5, padding: "1px 6px" }}>IN</span>}
-            </div>
-            <div style={{ fontSize: 11.5, color: FAINT }}>
-              {r.staff_role}{r.location_name ? ` · ${r.location_name}` : ""} · In {fmtTime(r.login_at)}
-              {r.logout_at ? ` · Out ${fmtTime(r.logout_at)}` : ""}
+      {rows.map((r) => {
+        // Lateness against the person's own rostered start; fall back to the branch default (is_late) if not rostered today.
+        const duty = roster.find((x) => x.staff_id === r.staff_id && x.weekday === today && x.start_time);
+        const late = duty ? minsLate(r.login_at, duty.start_time) > 0 : r.is_late;
+        return (
+          <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: `1px solid ${LINE}` }}>
+            <Avatar name={r.staff_name} role={r.staff_role} size={30} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>
+                {r.staff_name}
+                {late && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: RED, background: "#FEECEC", borderRadius: 5, padding: "1px 6px" }}>LATE</span>}
+                {!r.logout_at && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: TEAL, background: "#E7F5F5", borderRadius: 5, padding: "1px 6px" }}>IN</span>}
+              </div>
+              <div style={{ fontSize: 11.5, color: FAINT }}>
+                {r.staff_role}{r.location_name ? ` · ${r.location_name}` : ""}{duty ? ` · ${fmtDutyTime(duty.start_time)}–${fmtDutyTime(duty.end_time)}` : ""} · In {fmtTime(r.login_at)}
+                {r.logout_at ? ` · Out ${fmtTime(r.logout_at)}` : ""}
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </Card>
   );
 }
@@ -1724,7 +1730,7 @@ function Dashboard({ inventoryCol, servicesCol, visitsCol, patientsCol, transact
         <Stat icon={<Package size={15} color={TEAL} />} color={TEAL} label="Low stock" value={lowStock.length} sub="items need reorder" />
       </div>
 
-      <AttendanceCard currentUser={currentUser} />
+      <AttendanceCard currentUser={currentUser} roster={rosterCol?.data || []} />
 
       {activeVisitId && (
         <VisitDetailSheet
