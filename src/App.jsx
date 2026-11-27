@@ -81,7 +81,9 @@ const fmtDateTime = (iso) => {
     d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 };
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
+// Today's date at the clinic. Lagos is UTC+1 all year; toISOString() on its own gives the UTC day,
+// which is yesterday until 1 a.m.
+const todayISO = () => new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 10);
 
 const daysUntil = (iso) => {
   if (!iso) return null;
@@ -3213,10 +3215,7 @@ function LabReportSheet({ onClose }) {
 /* ----------------------------- Medical Report Sheet ----------------------------- */
 
 function MedicalReportSheet({ onClose }) {
-  const todayStr = () => {
-    const d = new Date();
-    return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
-  };
+  const todayStr = () => todayISO().split("-").reverse().join("/"); // DD/MM/YYYY
   const [patient, setPatient] = useState({ name: "", gender: "Female", age: "", mrn: "", regNo: "" });
   const [dateStr, setDateStr] = useState(todayStr());
   const [doctorName, setDoctorName] = useState("");
