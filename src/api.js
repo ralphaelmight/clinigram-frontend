@@ -14,6 +14,8 @@ export function setToken(token) {
 // means this fires once, and a late reply for an old sign-in can't sign out a newer one.
 export function noteSignedOut(data, token) {
   if (!data?.signedOut || !token || getToken() !== token) return;
+  // Changing your own PIN replaces this sign-in; a check that crosses it on the way must not end it.
+  if ([...pendingWrites.keys()].some((k) => k.startsWith("PUT /api/auth/my-pin "))) return;
   setToken(null);
   window.dispatchEvent(new CustomEvent("fm:signed-out", { detail: data.error }));
 }
@@ -91,6 +93,15 @@ async function send(method, path, body) {
     throw err;
   }
   return data;
+}
+
+// Asks whether this sign-in still stands. While the app is in use the server hands back a renewed
+// sign-in now and then; it is kept only if nobody signed out or in while the reply was on its way.
+export async function checkSignIn() {
+  const sent = getToken();
+  const { renewedToken, ...user } = (await request("GET", "/api/auth/me")) || {};
+  if (renewedToken && sent && getToken() === sent) setToken(renewedToken);
+  return user;
 }
 
 export const api = {

@@ -10,7 +10,8 @@ import {
   Banknote, Link2, AlertOctagon, Tag, WifiOff, ArrowDownToLine,
   Type, Contrast, LayoutList
 } from "lucide-react";
-import { api, getToken, setToken, postForBlob, noteSignedOut } from "./api";
+import { api, getToken, setToken, postForBlob, noteSignedOut, checkSignIn } from "./api";
+import { watchPresence, watchUse } from "./lib/presence";
 import { getA11y, setA11y, applyA11y } from "./utils/a11y.js";
 import { haptic } from "./lib/haptics";
 import { useTapLock, TapButton, Spinner, showSaved } from "./lib/tapLock";
@@ -98,7 +99,7 @@ const _cache = new Map();
 const _inflight = new Map();
 // Goes up at every sign-out, so a late reply meant for the previous person is thrown away.
 let _signIn = 0;
-function forgetSignedInData() { _signIn += 1; _cache.clear(); _inflight.clear(); }
+function forgetSignedInData() { _signIn += 1; _cache.clear(); _inflight.clear(); lastInsideMemory.clear(); }
 
 function useApiCollection(endpoint, { enabled = true } = {}) {
   const cached = _cache.get(endpoint);
@@ -232,90 +233,54 @@ function useIsDesktop() {
   return isDesktop;
 }
 
-/* ───────────────────── geofence auto-logout ───────────────────────────── */
+/* ───────────────────── staying signed in at the clinic ─────────────────── */
 
-function haversineMeters(lat1, lng1, lat2, lng2) {
-  const R = 6371000;
-  const toRad = (d) => (d * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+const LAST_INSIDE_KEY = "clinigram_last_inside";
+const lastInsideMemory = {
+  getLastInside: () => { try { return Number(localStorage.getItem(LAST_INSIDE_KEY)) || null; } catch { return null; } },
+  setLastInside: (t) => { try { localStorage.setItem(LAST_INSIDE_KEY, String(t)); } catch { /* optional */ } },
+  clear: () => { try { localStorage.removeItem(LAST_INSIDE_KEY); } catch { /* optional */ } },
+};
+
+// Records today's time-in for someone who stayed signed in. The server ignores it if there is one.
+function checkIn(coords) {
+  api.post("/api/auth/check-in", coords)
+    .then((r) => { if (r?.recorded) window.dispatchEvent(new Event("fm:time-in")); })
+    .catch(() => { /* offline or not at the clinic: the next use tries again */ });
 }
 
-const GEOFENCE_GRACE_SECONDS = 5 * 60; // 5 min grace before auto-logout
-
-function useGeofenceLogout(currentUser, locations, onLogout) {
+// Signs staff out once they have left the clinic (see lib/presence.js), and records the daily
+// time-in. A Super Admin, and a branch with no location set, are never signed out by location.
+function useClinicPresence(currentUser, locationsCol, onLeft) {
   const [countdown, setCountdown] = useState(null);
-  const outsideSinceRef = useRef(null);
-  const timerRef = useRef(null);
-  const watchIdRef = useRef(null);
+  const [locationOff, setLocationOff] = useState(false);
+
+  const exempt = currentUser?.role === "Super Admin";
+  const loc = exempt ? null : locationsCol.data?.find((l) => l.id === currentUser?.location_id);
+  const fenced = loc?.lat != null && loc?.lng != null;
+  const clinicLat = fenced ? Number(loc.lat) : null;
+  const clinicLng = fenced ? Number(loc.lng) : null;
+  const radius = Number(loc?.radius_meters) || 300;
+  const knowBranch = exempt || !!loc;
 
   useEffect(() => {
     setCountdown(null);
-    outsideSinceRef.current = null;
-    clearInterval(timerRef.current);
-    if (watchIdRef.current != null) {
-      navigator.geolocation?.clearWatch(watchIdRef.current);
-      watchIdRef.current = null;
-    }
-
-    if (!currentUser || currentUser.role === "Super Admin") return;
-    if (!locations?.length || !navigator.geolocation) return;
-
-    const loc = locations.find((l) => l.id === currentUser.location_id);
-    if (!loc?.lat || !loc?.lng) return;
-
-    const clinicLat = Number(loc.lat);
-    const clinicLng = Number(loc.lng);
-    const radius = Number(loc.radius_meters) || 300;
-
-    const onPosition = (pos) => {
-      const dist = haversineMeters(
-        pos.coords.latitude, pos.coords.longitude,
-        clinicLat, clinicLng
-      );
-      if (dist <= radius) {
-        // Back inside — cancel countdown
-        outsideSinceRef.current = null;
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-        setCountdown(null);
-      } else if (!outsideSinceRef.current) {
-        // Just left — start grace countdown
-        outsideSinceRef.current = Date.now();
-        const tick = () => {
-          const elapsed = Math.floor((Date.now() - outsideSinceRef.current) / 1000);
-          const remaining = GEOFENCE_GRACE_SECONDS - elapsed;
-          if (remaining <= 0) {
-            clearInterval(timerRef.current);
-            onLogout();
-          } else {
-            setCountdown(remaining);
-          }
-        };
-        tick();
-        timerRef.current = setInterval(tick, 1000);
-      }
-    };
-
-    watchIdRef.current = navigator.geolocation.watchPosition(onPosition, null, {
-      enableHighAccuracy: false,
-      maximumAge: 60000,
-      timeout: 30000,
+    setLocationOff(false);
+    if (!currentUser?.id || !knowBranch) return undefined;
+    if (!fenced) return watchUse(() => checkIn({ lat: null, lng: null }));
+    if (!navigator.geolocation) { setLocationOff(true); return undefined; }
+    return watchPresence({
+      clinic: { lat: clinicLat, lng: clinicLng, radius },
+      geo: navigator.geolocation,
+      memory: lastInsideMemory,
+      onCountdown: setCountdown,
+      onLeft: () => onLeft("left_building"),
+      onAtClinic: checkIn,
+      onLocationOff: setLocationOff,
     });
+  }, [currentUser?.id, knowBranch, fenced, clinicLat, clinicLng, radius, onLeft]);
 
-    return () => {
-      clearInterval(timerRef.current);
-      if (watchIdRef.current != null)
-        navigator.geolocation.clearWatch(watchIdRef.current);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser?.id, currentUser?.location_id, locations, onLogout]);
-
-  return countdown; // null = inside (or inactive), number = seconds remaining
+  return { countdown, locationOff };
 }
 
 /* ----------------------------- shared UI bits ----------------------------- */
@@ -1456,7 +1421,8 @@ function SettingsSheet({ onClose, currentUser, staffCol, rosterCol, locations, o
     if (newPin.length < 4) { setPinError("New PIN must be at least 4 digits"); return; }
     if (newPin !== newPin2) { setPinError("New PINs don't match"); return; }
     try {
-      await api.put("/api/auth/my-pin", { oldPin, newPin });
+      const r = await api.put("/api/auth/my-pin", { oldPin, newPin });
+      if (r?.token) setToken(r.token); // the new PIN ends other sign-ins; this one carries on
       setView("main"); setOldPin(""); setNewPin(""); setNewPin2(""); setPinError("");
     } catch (e) { setPinError(e.message); }
   };
@@ -1673,7 +1639,10 @@ function AttendanceCard({ currentUser, roster = [] }) {
   const today = new Date().getDay();
 
   useEffect(() => {
-    api.get("/api/attendance/today").then(setRows).catch(() => {});
+    const load = () => api.get("/api/attendance/today").then(setRows).catch(() => {});
+    load();
+    window.addEventListener("fm:time-in", load);
+    return () => window.removeEventListener("fm:time-in", load);
   }, []);
 
   const fmtTime = (iso) => {
@@ -2116,7 +2085,7 @@ function Inventory({ inventoryCol, restocksCol, currentUser, summary }) {
 
   return (
     <div style={{ padding: "0 16px calc(96px + env(safe-area-inset-bottom, 0px))" }}>
-      <TopBar title="Stock" subtitle={`${inventory.length} items tracked`}>
+      <TopBar title="Stock" subtitle={inventoryCol.loaded ? `${inventory.length} items tracked` : "Loading..."}>
         <div style={{ display: "flex", background: LINE, borderRadius: 12, padding: 3, gap: 2 }}>
           <TabBtn id="pharmacy" label="Pharmacy" count={pharmacyCount} />
           <TabBtn id="consumables" label="Consumables" count={consumablesCount} />
@@ -2473,7 +2442,7 @@ function Patients({ patientsCol, currentUser }) {
 
   return (
     <div style={{ padding: "0 16px calc(96px + env(safe-area-inset-bottom, 0px))" }}>
-      <TopBar title="Patient Folders" subtitle={`${patients.length} folders on record`}>
+      <TopBar title="Patient Folders" subtitle={patientsCol.loaded ? `${patients.length} folders on record` : "Loading..."}>
         <SearchBar value={query} onChange={setQuery} placeholder="Search name or hospital number..." />
       </TopBar>
       <div style={{ marginTop: 12 }}>
@@ -2925,7 +2894,7 @@ function Visits({ visitsCol, patientsCol, inventoryCol, servicesCol, onMutate, c
 
   return (
     <div style={{ padding: "0 16px calc(96px + env(safe-area-inset-bottom, 0px))" }}>
-      <TopBar title="Visits" subtitle={`${visits.filter((v) => v.status === "open").length} open visit(s)`}>
+      <TopBar title="Visits" subtitle={visitsCol.loaded ? `${visits.filter((v) => v.status === "open").length} open visit(s)` : "Loading..."}>
         <SearchBar value={query} onChange={setQuery} placeholder="Search patient or hospital number..." />
       </TopBar>
       <div style={{ marginTop: 12 }}>
@@ -3430,7 +3399,7 @@ export default function App() {
   useEffect(() => {
     if (!currentUser?.id) return;
     const check = () => {
-      if (document.visibilityState === "visible") api.get("/api/auth/me").catch(() => { /* offline: try later */ });
+      if (document.visibilityState === "visible") checkSignIn().catch(() => { /* offline: try later */ });
     };
     const timer = setInterval(check, 30000);
     window.addEventListener("focus", check);
@@ -3442,21 +3411,29 @@ export default function App() {
     };
   }, [currentUser?.id]);
 
-  // Resume session if a token is already stored
-  useEffect(() => {
-    (async () => {
-      const token = getToken();
-      if (!token) { setCheckingSession(false); return; }
-      try {
-        const me = await api.get("/api/auth/me");
-        setCurrentUser(me);
-      } catch (e) {
-        if (e.status === 401) setToken(null);
-      } finally {
-        setCheckingSession(false);
-      }
-    })();
+  // Resume session if a token is already stored. If the server can't be reached, stay signed in and
+  // keep trying; only a real refusal sends someone back to the sign-in list.
+  const [resumeFailed, setResumeFailed] = useState(false);
+  const resume = useCallback(async () => {
+    if (!getToken()) { setResumeFailed(false); setCheckingSession(false); return; }
+    try {
+      const me = await checkSignIn();
+      setResumeFailed(false);
+      if (getToken()) setCurrentUser(me);
+    } catch (e) {
+      if (e.status === 401) { setToken(null); setResumeFailed(false); }
+      else setResumeFailed(true);
+    } finally {
+      setCheckingSession(false);
+    }
   }, []);
+  useEffect(() => { resume(); }, [resume]);
+  useEffect(() => {
+    if (!resumeFailed) return undefined;
+    const timer = setInterval(resume, 5000);
+    window.addEventListener("online", resume);
+    return () => { clearInterval(timer); window.removeEventListener("online", resume); };
+  }, [resumeFailed, resume]);
 
   const ready = !!currentUser;
 
@@ -3495,14 +3472,21 @@ export default function App() {
   };
 
   const handleLogin = (user) => { setSignedOutNotice(""); setCurrentUser(user); };
-  const handleLogout = useCallback(async () => {
-    try { await api.post("/api/auth/logout", {}); } catch { /* best-effort */ }
+  // reason is "left_building" for the automatic sign-out (a button press passes its click event).
+  const handleLogout = useCallback(async (reason) => {
+    const leftBuilding = reason === "left_building";
+    try { await api.post("/api/auth/logout", leftBuilding ? { reason } : {}); } catch { /* best-effort */ }
     setToken(null); forgetSignedInData(); setCurrentUser(null); setTab("dashboard"); setShowSettings(false);
+    if (leftBuilding) setSignedOutNotice("You were signed out because you left the clinic.");
   }, []);
 
-  const geofenceCountdown = useGeofenceLogout(currentUser, locationsCol.data, handleLogout);
+  const { countdown: geofenceCountdown, locationOff } = useClinicPresence(currentUser, locationsCol, handleLogout);
+  const showPresenceBar = geofenceCountdown !== null || locationOff;
   const isDesktop = useIsDesktop();
 
+  if (resumeFailed && !currentUser) {
+    return <Shell><ConnectionError onRetry={resume} /></Shell>;
+  }
   if (checkingSession) {
     return <Shell><BrandLoader label="Opening Clinigram" /></Shell>;
   }
@@ -3597,8 +3581,8 @@ export default function App() {
         }
       `}</style>
 
-      {geofenceCountdown !== null && (
-        <div style={{
+      {showPresenceBar && (
+        <div role="alert" style={{
           position: "fixed", top: 0, left: 0, right: 0, zIndex: 9999,
           background: "#7c2222", color: WHITE,
           padding: "10px 16px", display: "flex", alignItems: "center", gap: 10,
@@ -3607,17 +3591,25 @@ export default function App() {
         }}>
           <AlertTriangle size={17} style={{ flexShrink: 0 }} />
           <span style={{ flex: 1 }}>
-            You&apos;ve left the clinic vicinity.{" "}
-            Logging out in{" "}
-            <span style={{ fontVariantNumeric: "tabular-nums" }}>
-              {Math.floor(geofenceCountdown / 60)}:{String(geofenceCountdown % 60).padStart(2, "0")}
-            </span>
-            {" "}unless you return.
+            {geofenceCountdown === null ? (
+              "Location is off. Please turn it on while you are signed in."
+            ) : geofenceCountdown === 0 ? (
+              "Checking your location before signing you out..."
+            ) : (
+              <>
+                You&apos;ve left the clinic vicinity.{" "}
+                Logging out in{" "}
+                <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                  {Math.floor(geofenceCountdown / 60)}:{String(geofenceCountdown % 60).padStart(2, "0")}
+                </span>
+                {" "}unless you return.
+              </>
+            )}
           </span>
         </div>
       )}
 
-      <div className="fm-app-layout" style={geofenceCountdown !== null ? { paddingTop: 44 } : {}}>
+      <div className="fm-app-layout" style={showPresenceBar ? { paddingTop: 56 } : {}}>
         {isDesktop && <Sidebar
           tab={tab}
           setTab={setTab}
