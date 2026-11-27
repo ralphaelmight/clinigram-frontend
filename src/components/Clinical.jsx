@@ -566,7 +566,7 @@ function NoteView({ visitId, note, user, onClose }) {
       </div>
       {note.summary_only && (
         <div style={{ fontSize: 12, color: TEAL, background: "#E7F5F5", borderRadius: 10, padding: "8px 11px", marginBottom: 10, fontWeight: 600 }}>
-          Summary view — chief complaint, diagnosis and plan. Full notes are doctor-only.
+          Summary view — complaint, diagnosis, plan and allergies. Full notes are doctor-only.
         </div>
       )}
       {note.summary_only && note.amended && (
