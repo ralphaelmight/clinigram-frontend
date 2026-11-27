@@ -6,15 +6,17 @@
 //   - it takes two such readings, a few seconds apart, to start the countdown;
 //   - when the countdown ends, one more fresh "outside" reading is needed (a phone that has just
 //     woken up must look again before acting);
-//   - if the app hasn't seen them at the clinic for a while (it was closed or the phone was
-//     locked), there is no countdown: two "outside" readings sign them out.
+//   - if the app has just been reopened after being closed or the phone being locked for a while,
+//     there is no countdown: two "outside" readings sign them out. This depends only on whether
+//     the app was open, never on how long since a good reading: indoors those can be rare.
 // A web app can only look while it is open on screen. It cannot follow anyone while closed.
 
 export const GRACE_MS = 5 * 60 * 1000;
 const CONFIRM_GAP_MS = 10 * 1000; // the two "outside" readings must be at least this far apart
 const CONFIRM_AFTER_MS = 12 * 1000; // when to ask for the second one
 const PENDING_EXPIRES_MS = 2 * 60 * 1000; // a lone "outside" reading older than this is forgotten
-const AWAY_LONG_MS = 10 * 60 * 1000; // not seen at the clinic for this long: no countdown
+const CLOSED_LONG_MS = 10 * 60 * 1000; // app not on screen for this long counts as "reopened"
+const REOPENED_VALID_MS = 3 * 60 * 1000; // how soon after reopening the no-countdown rule applies
 const FRESH_MS = 60 * 1000; // a reading older than this is ignored
 const LOOK_EVERY_MS = 60 * 1000;
 const LOOK_AGAIN_MS = 20 * 1000; // while waiting for the final reading
@@ -70,9 +72,23 @@ export function watchPresence({
   let lookedAt = 0;
   let presentAt = null;
   let firstStamp = null;
+  let reopenedAt = null;
   let watchId = null;
   let poll = null;
   let stopWatchingUse = null;
+
+  // Notes that the app is on screen now, and spots that it hadn't been for a long while.
+  const stillOpen = () => {
+    const t = now();
+    const before = memory.getLastOpen();
+    if (before && t - before > CLOSED_LONG_MS) reopenedAt = t;
+    memory.setLastOpen(t);
+  };
+  const onVisibility = () => {
+    // Going off screen: note the time. Coming back: see how long it has been.
+    if (doc.visibilityState === "visible") stillOpen();
+    else memory.setLastOpen(now());
+  };
 
   const clearOutside = () => {
     firstOutsideAt = lastOutsideAt = deadline = null;
@@ -96,12 +112,13 @@ export function watchPresence({
     if (stopped) return;
     const t = now();
     if (pos.timestamp && t - pos.timestamp > FRESH_MS) return;
+    if (doc.visibilityState === "visible") stillOpen();
     onLocationOff(false);
     const where = classify(pos.coords, clinic);
 
     if (where === "inside") {
       clearOutside();
-      memory.setLastInside(t);
+      reopenedAt = null;
       if (presentAt !== null && t - presentAt <= PRESENT_VALID_MS) {
         presentAt = null;
         onAtClinic({ lat: pos.coords.latitude, lng: pos.coords.longitude });
@@ -127,8 +144,9 @@ export function watchPresence({
     lastOutsideAt = t;
     if (t - firstOutsideAt < CONFIRM_GAP_MS) return;
 
-    const seen = memory.getLastInside();
-    if (seen && t - seen > AWAY_LONG_MS) { leave(); return; }
+    const justReopened = reopenedAt !== null && t - reopenedAt <= REOPENED_VALID_MS;
+    reopenedAt = null; // only the first decision after reopening
+    if (justReopened) { leave(); return; }
     deadline = firstOutsideAt + GRACE_MS;
     ticker = setInterval(tick, 1000);
     tick();
@@ -145,8 +163,14 @@ export function watchPresence({
     geo.getCurrentPosition(onReading, onFailure, { enableHighAccuracy: precise, maximumAge: 0, timeout: 20000 });
   }
 
+  if (doc.visibilityState === "visible") stillOpen();
+  doc.addEventListener("visibilitychange", onVisibility);
   watchId = geo.watchPosition(onReading, onFailure, { enableHighAccuracy: false, maximumAge: 30000, timeout: 30000 });
-  poll = setInterval(() => { if (doc.visibilityState === "visible") look(); }, LOOK_EVERY_MS);
+  poll = setInterval(() => {
+    if (doc.visibilityState !== "visible") return;
+    stillOpen();
+    look();
+  }, LOOK_EVERY_MS);
   stopWatchingUse = watchUse(() => { presentAt = now(); look(); }, { doc, now });
 
   function stop() {
@@ -154,6 +178,7 @@ export function watchPresence({
     clearOutside();
     stopped = true;
     clearInterval(poll);
+    doc.removeEventListener("visibilitychange", onVisibility);
     geo.clearWatch(watchId);
     stopWatchingUse?.();
   }

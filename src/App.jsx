@@ -99,7 +99,7 @@ const _cache = new Map();
 const _inflight = new Map();
 // Goes up at every sign-out, so a late reply meant for the previous person is thrown away.
 let _signIn = 0;
-function forgetSignedInData() { _signIn += 1; _cache.clear(); _inflight.clear(); lastInsideMemory.clear(); }
+function forgetSignedInData() { _signIn += 1; _cache.clear(); _inflight.clear(); presenceMemory.clear(); }
 
 function useApiCollection(endpoint, { enabled = true } = {}) {
   const cached = _cache.get(endpoint);
@@ -235,11 +235,12 @@ function useIsDesktop() {
 
 /* ───────────────────── staying signed in at the clinic ─────────────────── */
 
-const LAST_INSIDE_KEY = "clinigram_last_inside";
-const lastInsideMemory = {
-  getLastInside: () => { try { return Number(localStorage.getItem(LAST_INSIDE_KEY)) || null; } catch { return null; } },
-  setLastInside: (t) => { try { localStorage.setItem(LAST_INSIDE_KEY, String(t)); } catch { /* optional */ } },
-  clear: () => { try { localStorage.removeItem(LAST_INSIDE_KEY); } catch { /* optional */ } },
+// When the app was last on screen, kept so a reopened app knows it has been away.
+const LAST_OPEN_KEY = "clinigram_last_open";
+const presenceMemory = {
+  getLastOpen: () => { try { return Number(localStorage.getItem(LAST_OPEN_KEY)) || null; } catch { return null; } },
+  setLastOpen: (t) => { try { localStorage.setItem(LAST_OPEN_KEY, String(t)); } catch { /* optional */ } },
+  clear: () => { try { localStorage.removeItem(LAST_OPEN_KEY); } catch { /* optional */ } },
 };
 
 // Records today's time-in for someone who stayed signed in. The server ignores it if there is one.
@@ -272,7 +273,7 @@ function useClinicPresence(currentUser, locationsCol, onLeft) {
     return watchPresence({
       clinic: { lat: clinicLat, lng: clinicLng, radius },
       geo: navigator.geolocation,
-      memory: lastInsideMemory,
+      memory: presenceMemory,
       onCountdown: setCountdown,
       onLeft: () => onLeft("left_building"),
       onAtClinic: checkIn,
